@@ -1733,7 +1733,7 @@ class Settings():
         try:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(SERVER_IP, port=22, username="root", password="Nc91130529", timeout=8)
+            ssh.connect(SERVER_IP, port=22, username="root", password="******", timeout=8)  # 出于服务器安全考虑，密码已屏蔽
             # 启用加密文件传输协议
             sftp = ssh.open_sftp()
             if op=="download":
@@ -1750,9 +1750,9 @@ class Settings():
     def accessDB(self, op="read", data=None):
         '''param op: "read" or "insert".'''
         # 打开数据库连接。mysql端口号3306，utf-8编码，否则中文有可能会出现乱码。
-        # 专用的远程访问用户player，密码123456。游戏的数据库名称为knight_throde。
+        # 专用的远程访问用户player，密码******(出于服务器安全考虑，密码已屏蔽)。游戏的数据库名称为knight_throde。
         try:
-            db = pymysql.connect("121.199.75.3", "player", "123456", "knight_throde",
+            db = pymysql.connect("121.199.75.3", "player", "******", "knight_throde",
                                 port=3306, charset='utf8', connect_timeout=8)
             # 使用 cursor() 方法创建一个游标对象 cursor
             cursor = db.cursor()
@@ -1834,8 +1834,6 @@ class Settings():
                 self.accessDB(op="insert", data=data)   # will be given self.tmp_game_id
                 # 重置游戏记录
                 database.clear_rec_data()
-                #self.transmitFile(op="upload")      # 访问服务器，并上传.data存入到云端
-                #self.transmitFile(op="download")    # 然后重新下载，并将新data导入程序中
                 self._updateAccount()
                 return "OK"
             except:
