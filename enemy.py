@@ -1,18 +1,22 @@
-# enemy.py
+"""
+enemy.py:
+Define all kinds of monsters and impediments in game.
+Classes in this module is organised in the order of chapters.
+"""
 import pygame
 from pygame.image import load
-from pygame.transform import flip
+from pygame.transform import flip   # this function is non-destructive to images
 from pygame.sprite import collide_mask
 import math
-from random import *
+from random import choice, random, randint
 
 from database import MB, NB, DMG_FREQ
 from util import InanimSprite, HPBar
-from util import getPos, rot_center, generateShadow
+from util import getPos, rot_center, generateShadow, getCld
 
 
-# NOTE: pygame.transform.flip() is non-destructive
 # -------------------------------------------------
+# some helpful functions for this module
 def cldList(subject, objList):
     '''Check whether subject collides with any object in the list:
     if yes, invoke hitted() of the collided object.'''
@@ -22,15 +26,6 @@ def cldList(subject, objList):
             if hasattr(subject, "dmgType") and subject.dmgType=="freezing":
                 each.freeze(1)
             return each   # 返回碰撞对象表示发生碰撞，否则函数最后返回默认值None
-
-def getCld(core, group, cateList):
-    '''Assistant function for stone.fall'''
-    spriteList = []
-    cldList = pygame.sprite.spritecollide(core, group, False, collide_mask)
-    for item in cldList:
-        if item.category in cateList:
-            spriteList.append(item)
-    return spriteList
 
 def createCanvas(size, colorKey=(0,0,0)):
     '''为调用者生成一个画布对象。接受参数为画布尺寸和透明色信息（RGB无A），返回画布的surface及其rect。'''
@@ -62,9 +57,10 @@ def getShadLib(imgLib):
                 shadLib[name][dir].append( generateShadow(img) )
     return shadLib
 
+
 # ========================================================================
-#   DIY一个enemy类，此类将提供所有enemy应有的方法和属性，子类可在此基础上扩展
-# 初始化需要的参数有：游戏内类别名，血的颜色，体力值，击退位移，价值得分，所在层数。
+# Basic class for all monsters: 
+# 此类将提供所有enemy应有的方法和属性，子类可在此基础上扩展
 # ========================================================================
 class Monster(InanimSprite):
 
@@ -73,9 +69,19 @@ class Monster(InanimSprite):
     healthBonus = 1
     # model的spurtcanvas对象，每个monster均应能快速访问，来实现多种效果
     spurtCanvas = None
+    # monster 眩晕图片列表
+    stun_img = []
+    # a msgList of the model: could be visited by all monsters
+    msgList = None
 
-    def __init__(self, cate, bldColor, push, weight, onlayer, sideGroup=None):
+    def __init__(self, cate, bldColor, push, weight, onlayer, 
+                    sideGroup=None, shadOffset=8, bar=False, debri=()):
+        '''debri: pair (debriType, num)'''
         InanimSprite.__init__(self, cate)   # 首先它应该是一个InanimSprite
+        if not Monster.stun_img:
+            Monster.stun_img = [load("image/stun_1.png"), load("image/stun_2.png"), 
+                    load("image/stun_3.png"), load("image/stun_4.png")]
+            Monster.stun_rect = Monster.stun_img[0].get_rect()
         self.bldColor = bldColor            # tuple类型
         self.health = round( MB[cate].health * self.healthBonus )
         self.full = self.health
@@ -90,6 +96,7 @@ class Monster(InanimSprite):
         self.weight = weight
         self.hitBack = 0
         self.realDmgRate = 1-self.armor
+        self.shadOffset = shadOffset
         
         self.onlayer = int(onlayer)         # 怪物的onlayer是其所处的砖块的层数。
         self.direction = "left"             # 默认初始朝left。若需自定义，可在monster子类的构造函数中修改本值。
@@ -99,7 +106,9 @@ class Monster(InanimSprite):
             self.renewObstacle(sideGroup)
 
         # The followings are parameters about HP bar.
-        self.bar = HPBar(self.full)
+        self.bar = HPBar(self.full, blockVol=200, barH=10) if bar else None
+        self.debri = debri
+        self.stun_time = 0
 
     def alterSpeed(self, speed):
         self.speed = speed
@@ -199,34 +208,53 @@ class Monster(InanimSprite):
         '''所有monster都应有paint()函数，供外界调用，将自身画在传来的surface上。NOTE:此函数不负责绘制生命条，应该由怪物管理类主动绘制'''
         # 画阴影
         shadRect = self.rect.copy()
-        shadRect.left -= 8
+        shadRect.left -= self.shadOffset
         surface.blit(self.shad, shadRect)
         surface.blit( self.image, self.rect )
         # 画打击阴影
         if self.hitBack:
             surface.blit( self.shad, self.rect )
-
+        
     # stun(): similar to hero's freeze()
     def stun(self, duration):
         self.stun_time = duration
+        self.reset()
+
+    def reset(self):    # to be override by specific monster class
+        pass
+
+    def count_stun(self):
+        if self.stun_time>0:
+            self.stun_time -= 1
     
     def setImg(self, name, indx=0):  # 根据状态名称切换图片。如果是列表，应给出indx值。
         self.image = self.imgLib[name][self.direction][indx]
         self.shad = self.shadLib[name][self.direction][indx]
     
     def drawHealth(self, surface):
-        self.bar.paint(self, surface)
-
+        if self.bar:
+            self.bar.paint(self, surface)
+        # 画眩晕
+        if self.stun_time > 0:
+            self.stun_rect.bottom = self.rect.top
+            self.stun_rect.left = self.rect.left +self.rect.width//2 -self.stun_rect.width//2
+            surface.blit(self.stun_img[self.stun_time//3%4], self.stun_rect)
+        
     def assignGoalie(self, HPInc):
-        # Redefine its health.
+        # Redefine its health. All settings will be inherited.
         self.full = self.health = round( self.health * HPInc )
-        self.bar = HPBar(self.full, color="goldRed", icon=True)
+        if self.bar:
+            self.bar = HPBar(self.full, blockVol=self.bar.blockVol, barH=self.bar.barH, color="goldRed", icon=True)
 
     def hitted(self, damage, pushed, dmgType):
         # decrease health
-        self.health -= (damage*self.realDmgRate)
-        if self.health <= 0:                # dead。
+        true_dmg = round(damage*self.realDmgRate)
+        self.health -= true_dmg
+        self.msgList.append( [getPos(self,0.5,0.5), str(true_dmg), 60] )
+        if self.health <= 0:        # dead
             self.health = 0
+            if self.debri:
+                self.spurtCanvas.addPebbles(self, self.debri[1], type=self.debri[0])
             self.kill()
             return True
         if pushed>0:   # 向右击退
@@ -234,35 +262,23 @@ class Monster(InanimSprite):
         elif pushed<0: # 向左击退
             self.hitBack = min( pushed+self.weight, 0 )
 
-class Ajunction(pygame.sprite.Sprite):
-    '''此类应附属于某个monster主体而存在。由于是附属物，此类只提供供主物移动位置、替换image的函数接口，需要主物来执行相应的删除工作。'''
-    def __init__(self, img, pos):
-        pygame.sprite.Sprite.__init__(self)
-        self.image = img
-        self.rect = self.image.get_rect()
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.bottom = pos[1] - self.rect.height//2
-        self.mask = pygame.mask.from_surface(self.image)
+    def recover(self, heal):
+        if self.health<=0:
+            return
+        #self.spurtCanvas.addSpatters(8, (2,3,4), (20,22,24), (10,240,10), getPos(self,0.5,0.4) )
+        self.health += heal
+        self.msgList.append( [getPos(self,0.5,0.5), "+"+str(heal), 60, "green"] )
+        if (self.health > self.full):
+            self.health = self.full
 
-    def updatePos(self, pos):
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.top = pos[1] - self.rect.height//2
-    
-    def updateImg(self, img):
-        trPos = [ self.rect.left + self.rect.width//2, self.rect.top + self.rect.height//2 ]
-        self.image = img
-        self.rect = self.image.get_rect()
-        self.rect.left = trPos[0]-self.rect.width//2
-        self.rect.bottom = trPos[1]
-        self.mask = pygame.mask.from_surface(self.image)
-
+# Boss: 比普通Monster更高级一些，拥有更多属性和特殊方法
 class Boss(Monster):
     '''Boss相比于Monster，拥有一些特殊的行为和属性'''
-    def __init__(self, font, cate, bldColor, push, weight, onlayer, sideGroup=None):
-        Monster.__init__(self, cate, bldColor, push, weight, onlayer, sideGroup)
+    def __init__(self, font, cate, bldColor, push, weight, onlayer, sideGroup=None, shadOffset=8, bar=True):
+        Monster.__init__(self, cate, bldColor, push, weight, onlayer, sideGroup, shadOffset)
         self.activated = False
         self.font = font    # For showing outscreen pos
-        self.bar = HPBar(self.full, blockVol=20, barH=14, fixed=True)
+        self.bar = HPBar(self.full, blockVol=200, barH=12)
 
     def _tipPosition(self, canvas):
         if (self.rect.top > canvas.rect.height):
@@ -276,9 +292,14 @@ class Boss(Monster):
         """Boss 一般体型较大，有其特殊的处理行砖方式"""
         self.wallList = []
         posList = []                # 辅助列表，用于暂时存储本行砖块的位置（左边线）
-        for aWall in groupList[str(self.onlayer)]:  # 由于spriteGroup不好进行索引/随机选择操作，因此将其中的sprite逐个存入列表中存储
-            self.wallList.append(aWall)
-            posList.append(aWall.rect.left)
+        while True:    # in case that wallList of chosen layer is empty
+            for aWall in groupList[str(self.onlayer)]:  # 由于spriteGroup不好进行索引/随机选择操作，因此将其中的sprite逐个存入列表中存储
+                self.wallList.append(aWall)
+                posList.append(aWall.rect.left)
+            if not self.wallList:
+                self.onlayer -= 2
+            else:
+                break
         wall = choice(self.wallList)
         self.initPos = getPos(wall, 0.5, 0)   # 新点，居中
         leftMax = wall.rect.left
@@ -301,12 +322,33 @@ class Boss(Monster):
                 self.wallList.append(each)
         return wall
 
-    def assignGoalie(self, HPInc):
-        # Redefine its health.
-        self.full = self.health = round( self.health * HPInc )
-        self.bar = HPBar(self.full, blockVol=20, barH=14, color="goldRed", icon=True, fixed=True)
+# Ajunction: 一个Boss往往由一个Boss主体和多个Ajunction构成，如Dragon=身体本身(Boss类)+翅膀+头+尾巴（后三个均为Ajunction）
+class Ajunction(pygame.sprite.Sprite):
+    '''此类应附属于某个monster主体而存在。由于是附属物，此类只提供供主物移动位置、替换image的函数接口，需要主物来执行相应的删除工作。'''
+    def __init__(self, img, pos):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.left = pos[0] - self.rect.width//2
+        self.rect.bottom = pos[1] - self.rect.height//2
+        self.mask = pygame.mask.from_surface(self.image)
+
+    def updatePos(self, pos):
+        self.rect.left = pos[0] - self.rect.width//2
+        self.rect.top = pos[1] - self.rect.height//2
     
-# --------------Endless Mode-------------------
+    def updateImg(self, img):
+        trPos = [ self.rect.left + self.rect.width//2, self.rect.top + self.rect.height//2 ]
+        self.image = img
+        self.rect = self.image.get_rect()
+        self.rect.left = trPos[0]-self.rect.width//2
+        self.rect.bottom = trPos[1]
+        self.mask = pygame.mask.from_surface(self.image)
+
+
+# ========================================================================
+# ------------------------- CP 0 (endless mode)---------------------------
+# ========================================================================
 class BiteChest(Monster): 
     imgLib = None
     shadLib = None
@@ -319,7 +361,6 @@ class BiteChest(Monster):
                     "image/stg0/biteChest1.png")
             }
             BiteChest.shadLib = getShadLib(BiteChest.imgLib)
-        
         # calculate its position
         Monster.__init__(self, "biteChest", (250,210,160), 4, 3, onlayer, sideGroup)
         wall = self.initLayer(wallGroup, sideGroup)
@@ -327,21 +368,23 @@ class BiteChest(Monster):
 
         # initialize the sprite
         self.imgIndx = 0
-        self.attIndx = 0
         self.setImg("iList",0)
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
+        self.reset()
         self.restCnt = self.resetCntFull = 8
         self.alterSpeed( choice([-1,1]) )
         self.rise = ( 1, -8, -13, -16, -13, -8, 1 )
 
     def move(self, delay, sprites):
         self.checkHitBack(obstacle=True)
+        self.count_stun()
+        
         if self.imgIndx<len(self.rise)-1:       # 在空中时水平移动
-            self.rect.left += self.speed
+            if self.stun_time==0:
+                self.rect.left += self.speed
             if (getPos(self,0.8,0)[0]>=self.scope[1] and self.speed>0) or (getPos(self,0.2,0)[0]<=self.scope[0] and self.speed<0):
                 self.alterSpeed( -self.speed )
             if not (delay % 4 ):
@@ -352,28 +395,35 @@ class BiteChest(Monster):
                 self.rect = self.image.get_rect()
                 self.rect.left = trPos[0]-self.rect.width//2
                 self.rect.bottom = trPos[1] + self.rise[self.imgIndx]
-        else:       # rise最后一下落地，0.33秒停顿
-            self.restCnt -= 1
-            if self.restCnt<0:
-                self.restCnt = self.resetCntFull
-                self.imgIndx = 0
-        # Bite
-        if ( self.coolDown==0 ):
-            for each in sprites:
-                if collide_mask(self, each):
-                    self.coolDown = 36
-        elif (self.coolDown > 0):
-            self.coolDown -= 1
-            if ( self.coolDown == 20 ):
-                cldList( self, sprites )
+        else:
+            if self.stun_time==0:
+                # rise最后一下落地，0.33秒停顿
+                self.restCnt -= 1
+                if self.restCnt<0:
+                    self.restCnt = self.resetCntFull
+                    self.imgIndx = 0
+        if self.stun_time==0:
+            # Bite
+            if ( self.coolDown==0 ):
+                for each in sprites:
+                    if collide_mask(self, each):
+                        self.coolDown = 36
+            elif (self.coolDown > 0):
+                self.coolDown -= 1
+                if ( self.coolDown == 20 ):
+                    cldList( self, sprites )
+
+    def reset(self):
+        self.coolDown = 0
 
     def level(self, dist):
         self.rect.left += dist
         self.scope = (self.scope[0]+dist, self.scope[1]+dist)
 
-# ============================================================================
-# --------------------------------- Stage1 -----------------------------------
-# ============================================================================
+
+# ========================================================================
+# --------------------------------- CP 1 ---------------------------------
+# ========================================================================
 class InfernoFire(InanimSprite):
     def __init__(self, bg_size):
         InanimSprite.__init__(self, "infernoFire")
@@ -391,8 +441,8 @@ class InfernoFire(InanimSprite):
         if self.rect.top<self.height:
             self.rect.left += self.speed[0]
             self.rect.top += self.speed[1]
-            color = choice( [(60,10,0,230), (120,40,0,230)] )
-            canvas.addTrails( [5,7,9], [21,24,27], color, getPos(self, 0.3+random()*0.4, 0.5+random()*0.2) )
+            color = choice( [(60,10,0,210), (120,40,0,210)] )
+            canvas.addTrails( [3,5,7], [21,24,27], color, getPos(self, 0.3+random()*0.4, 0.5+random()*0.1) )
         else:
             self._reset()
             return
@@ -405,15 +455,15 @@ class InfernoFire(InanimSprite):
                     else:
                         each.hitted(self.damage, -3, self.dmgType)
                         canvas.addSpatters( 4, (2,4,6), (6,7,8), (255,240,0,230), getPos(self, random()*0.5, 0.2+random()*0.2), False )
-        if not (delay % 6):              # 若delay整除6，则切换图片
+        if not (delay % 5):              # 切换图片
             self.imgIndx = ( self.imgIndx+1 ) % len(self.imgList)
             self.image = self.imgList[self.imgIndx]
             self.mask = pygame.mask.from_surface(self.image)
     
     def _reset(self):
         self.snd.play(0)
-        self.speed = [choice([-4, 4]), 3]
-        rot = -125 if self.speed[0]<0 else 125
+        self.speed = [choice([-5, 5]), 3]
+        rot = -115 if self.speed[0]<0 else 115
         self.imgList = [pygame.transform.rotate(each, -rot) for each in self.ori_imgList]
         self.image = self.imgList[0]
         self.imgIndx = 0
@@ -426,54 +476,55 @@ class InfernoFire(InanimSprite):
         self.rect.bottom = randint(-60, self.height//2)
 
 # -----------------------------------
-class Gozilla(Monster):
+class Tizilla(Monster):
     imgLib = None
     shadLib = None
 
     def __init__(self, wallGroup, sideGroup, blockSize, onlayer):
         if not self.imgLib:
-            Gozilla.imgLib = {
-                "iList": createImgList( "image/stg1/gozilla0.png", "image/stg1/gozilla1.png", 
-                    "image/stg1/gozilla0.png", "image/stg1/gozilla2.png" ),
-                "attList": createImgList( "image/stg1/gozillaAtt1.png", 
-                    "image/stg1/gozillaAtt2.png", 
-                    "image/stg1/gozillaAtt3.png", 
-                    "image/stg1/gozillaAtt4.png")
+            Tizilla.imgLib = {
+                "iList": createImgList( "image/stg1/tizilla0.png", "image/stg1/tizilla1.png", 
+                    "image/stg1/tizilla0.png", "image/stg1/tizilla2.png" ),
+                "attList": createImgList( "image/stg1/tizillaAtt1.png", 
+                    "image/stg1/tizillaAtt2.png", 
+                    "image/stg1/tizillaAtt3.png", 
+                    "image/stg1/tizillaAtt4.png")
             }
-            Gozilla.shadLib = getShadLib(Gozilla.imgLib)
+            Tizilla.shadLib = getShadLib(Tizilla.imgLib)
         
         # calculate its position
-        Monster.__init__(self, "gozilla", (255,0,0,240), 6, 1, onlayer, sideGroup)
+        Monster.__init__(self, "tizilla", (255,0,0,240), 6, 1, onlayer, sideGroup)
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
-        self.imgIndx = 0
-        self.attIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
         self.alterSpeed( choice([1,-1]) )
 
     def move(self, delay, sprites):
         self.checkHitBack(obstacle=True)
-        self.rect.left += self.speed
+        self.count_stun()
+
         self.rect.bottom += self.gravity
-        if (getPos(self,0.8,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.2,0)[0] <= self.scope[0] and self.speed < 0):
-            self.alterSpeed(-self.speed)
-        if not (delay % 8):
-            self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-            self.setImg("iList",self.imgIndx)
-        if ( self.coolDown==0 ):
-            for each in sprites:
-                if collide_mask(self, each):
-                    self.coolDown = 40
-        if (self.coolDown > 0):
-            self.coolDown -= 1
-            self.cratch( sprites )
-        # Check Hero and Turn speed
-        self.detectHero(sprites)
+
+        if self.stun_time==0:
+            self.rect.left += self.speed
+            if (getPos(self,0.8,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.2,0)[0] <= self.scope[0] and self.speed < 0):
+                self.alterSpeed(-self.speed)
+            if not (delay % 8):
+                self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                self.setImg("iList",self.imgIndx)
+            if ( self.coolDown==0 ):
+                for each in sprites:
+                    if collide_mask(self, each):
+                        self.coolDown = 40
+            if (self.coolDown > 0):
+                self.coolDown -= 1
+                self.cratch( sprites )
+            # Check Hero and Turn speed
+            self.detectHero(sprites)
     
     def cratch(self, sprites):
         if (self.coolDown <= 22):
@@ -495,93 +546,104 @@ class Gozilla(Monster):
         self.rect.left = trPos[0]-self.rect.width//2
         self.rect.bottom = trPos[1]
 
+    def reset(self):
+        self.imgIndx = 0
+        self.attIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0
+
     def level(self, dist):
         self.rect.left += dist
         self.scope = (self.scope[0]+dist, self.scope[1]+dist)
 
 # -----------------------------------
-class MegaGozilla(Monster):
+class MegaTizilla(Monster):
     imgLib = None
     shadLib = None
     fireSnd = None
 
     def __init__(self, wallGroup, sideGroup, blockSize, onlayer):
         if not self.imgLib:
-            MegaGozilla.imgLib = {
-                "iList": createImgList( "image/stg1/megaGozilla0.png", "image/stg1/megaGozilla1.png", 
-                    "image/stg1/megaGozilla0.png", "image/stg1/megaGozilla2.png" ),
-                "att": createImgList( "image/stg1/megaGozillaAtt.png"), 
-                "alarm": createImgList("image/stg1/megaGozillaAlarm.png")
+            MegaTizilla.imgLib = {
+                "iList": createImgList( "image/stg1/megaTizilla0.png", "image/stg1/megaTizilla1.png", 
+                    "image/stg1/megaTizilla0.png", "image/stg1/megaTizilla2.png" ),
+                "att": createImgList( "image/stg1/megaTizillaAtt.png"), 
+                "alarm": createImgList("image/stg1/megaTizillaAlarm.png")
             }
-            MegaGozilla.shadLib = getShadLib(MegaGozilla.imgLib)
-            MegaGozilla.fireSnd = pygame.mixer.Sound("audio/megaGozFire.wav")
+            MegaTizilla.shadLib = getShadLib(MegaTizilla.imgLib)
+            MegaTizilla.fireSnd = pygame.mixer.Sound("audio/megaTizFire.wav")
         
         # calculate its position
-        Monster.__init__(self, "megaGozilla", (255,0,0,240), 6, 3, onlayer, sideGroup)
+        Monster.__init__(self, "megaTizilla", (255,0,0,240), 6, 3, onlayer, sideGroup)
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
-        self.imgIndx = 0
-        self.attIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
         self.rect.bottom = wall.rect.top
         self.alterSpeed( choice([1,-1]) )
-        self.airCnt = 0           # indicate if I'm spitting!
         self.hitAccum = 0
     
     def move(self, delay, sprites, canvas):
         self.checkHitBack(obstacle=True)
-        if (self.airCnt==0):
-            if not (delay%2):
-                self.rect.left += self.speed
-                self.rect.bottom += self.gravity
-                # touch the edge and turn around
-                if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
-                    self.alterSpeed(-self.speed)
-                # renew the image of megaGozilla
-                if not (delay % 10):
-                    trPos = [ self.rect.left+self.rect.width//2, self.rect.bottom ]
-                    self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-                    self.setImg("iList",self.imgIndx)
-                    self.rect = self.image.get_rect()
-                    self.rect.left = trPos[0]-self.rect.width//2
-                    self.rect.bottom = trPos[1]
-            for hero in sprites:
-                heroPos = getPos(hero,0.5,0)
-                myPos = getPos(self,0.5,0)
-                # 如果有英雄在同一层，则将速度改为朝英雄方向。
-                if (hero.onlayer-1)==self.onlayer:
-                    # 判断是否需要转向
-                    if ( self.scope[0]<=heroPos[0]<=self.scope[1] ):
-                        if self.speed*( heroPos[0]-myPos[0] ) < 0:
-                            self.alterSpeed(-self.speed)
-                            break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。
-                    # 判断是否需要攻击
-                    if (self.speed<0 and -225<=heroPos[0]-myPos[0]<0) or (self.speed>0 and 0<heroPos[0]-myPos[0]<225):
-                        self.airCnt = 76
-                        self.fireSnd.play(0)
-        elif self.airCnt>0:
-            self.airCnt -= 1
-            if self.airCnt>60:
-                self.setImg("alarm")
-            else:
-                self.setImg("att")
-                if self.speed <= 0:
-                    spd = [ choice([-3,-4]), choice([-2, -1, 1, 2]) ]
-                    startX = 0.34
-                elif self.speed > 0:
-                    spd = [ choice([3,4]), choice([-2, -1, 1, 2]) ]
-                    startX = 0.66
-                # 每次刷新均吐出2个气团
-                canvas.addAirAtoms( self, 2, getPos(self, startX, 0.37), spd, sprites, "fire" )
+        self.count_stun()
+        if self.stun_time==0:
+            if (self.airCnt==0):
+                if not (delay%2):
+                    self.rect.left += self.speed
+                    self.rect.bottom += self.gravity
+                    # touch the edge and turn around
+                    if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
+                        self.alterSpeed(-self.speed)
+                    # renew image
+                    if not (delay % 10):
+                        trPos = [ self.rect.left+self.rect.width//2, self.rect.bottom ]
+                        self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                        self.setImg("iList",self.imgIndx)
+                        self.rect = self.image.get_rect()
+                        self.rect.left = trPos[0]-self.rect.width//2
+                        self.rect.bottom = trPos[1]
+                for hero in sprites:
+                    heroPos = getPos(hero,0.5,0)
+                    myPos = getPos(self,0.5,0)
+                    # 如果有英雄在同一层，则将速度改为朝英雄方向。
+                    if (hero.onlayer-1)==self.onlayer:
+                        # 判断是否需要转向
+                        if ( self.scope[0]<=heroPos[0]<=self.scope[1] ):
+                            if self.speed*( heroPos[0]-myPos[0] ) < 0:
+                                self.alterSpeed(-self.speed)
+                                break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。
+                        # 判断是否需要攻击
+                        if (self.speed<0 and -225<=heroPos[0]-myPos[0]<0) or (self.speed>0 and 0<heroPos[0]-myPos[0]<225):
+                            self.airCnt = 76
+                            self.fireSnd.play(0)
+            elif self.airCnt>0:
+                self.airCnt -= 1
+                if self.airCnt>60:
+                    self.setImg("alarm")
+                else:
+                    self.setImg("att")
+                    if self.speed <= 0:
+                        spd = [ choice([-3,-4]), choice([-2, -1, 1, 2]) ]
+                        startX = 0.34
+                    elif self.speed > 0:
+                        spd = [ choice([3,4]), choice([-2, -1, 1, 2]) ]
+                        startX = 0.66
+                    # 每次刷新均吐出2个气团
+                    canvas.addAirAtoms( self, 2, getPos(self, startX, 0.37), spd, sprites, "fire" )
     
     def reportHit(self, tgt):
         self.hitAccum += 1
         if self.hitAccum>=12:
             self.hitAccum = 0
             tgt.hitted( self.damage, self.push, "fire" )
+
+    def reset(self):
+        self.imgIndx = 0
+        self.attIndx = 0
+        self.setImg("iList",0)
+        self.airCnt = 0           # indicate if spitting!
 
     def level(self, dist):
         self.rect.left += dist
@@ -607,34 +669,40 @@ class Dragon(Monster):
         Monster.__init__(self, "dragon", (255,0,0,240), 0, 1, onlayer)
         self.boundaries = boundaries
         # initialize the sprite
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = randint(boundaries[0], boundaries[1]-self.rect.width)
         self.rect.top = wallHeight - 190
         self.alterSpeed( choice([-1, 1]) )
-        self.coolDown = randint(240,480)
-        self.upDown = 2
 
     def move(self, delay):
         self.checkHitBack()
+        self.count_stun()
+
         if not (delay % 20):
             self.rect.top += self.upDown
             self.upDown = - self.upDown
         if not (delay % 6 ):
             self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
             self.setImg("iList",self.imgIndx)
-        self.rect.left += self.speed
-        if (self.rect.left<=self.boundaries[0] and self.speed < 0) or (self.rect.right>=self.boundaries[1] and self.speed > 0):
-            self.alterSpeed(-self.speed)
-        # randomly fire
-        self.coolDown -= 1
-        if self.coolDown<=0:
-            self.fireSnd.play(0)
-            self.coolDown = randint(120,480)
-            return Fire(getPos(self, 0, 1), self.onlayer, -2, 0) if (self.direction=="left") else Fire(getPos(self,0.95,1), self.onlayer, 2, 0)
+        if self.stun_time==0:
+            self.rect.left += self.speed
+            if (self.rect.left<=self.boundaries[0] and self.speed < 0) or (self.rect.right>=self.boundaries[1] and self.speed > 0):
+                self.alterSpeed(-self.speed)
+            # randomly fire
+            self.coolDown -= 1
+            if self.coolDown<=0:
+                self.fireSnd.play(0)
+                self.coolDown = randint(120,480)
+                return Fire(getPos(self, 0, 1), self.onlayer, -2, 0) if (self.direction=="left") else Fire(getPos(self,0.95,1), self.onlayer, 2, 0)
         return None
+
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = randint(240,480)
+        self.upDown = 2
 
     def level(self, dist):
         self.rect.left += dist
@@ -715,6 +783,7 @@ class DragonEgg(Monster):
         # initialize the sprite
         self.imgIndx = 0
         self.setImg("iList",0)
+        self.attCnt = 0
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
@@ -726,17 +795,16 @@ class DragonEgg(Monster):
                             getPos(self, self.babyR[self.direction][0][0], 
                             self.babyR[self.direction][0][1]) 
                     )
-        self.attCnt = 0
-        self.broken = -1    #-1表示健康；0表示打破，等待生成babydragon的瞬间；1表示打破且已生成dragon
         self.barOffset = 30
 
     def move(self, delay, sprites):
-        if self.broken>=0:
+        if self.health<=0:
             return
         # checkhitback: 仅计算时间，不进行位移
         if abs(self.hitBack)>0:
             self.hitBack -= self.hitBack//abs(self.hitBack)
-        # update baby image
+                
+        # update baby image. Note: 因为有壳保护，龙宝不会受到stun效果影响。
         if self.attCnt>0:
             self.attCnt -= 1
             r = self.babyR[self.direction][1]
@@ -746,7 +814,7 @@ class DragonEgg(Monster):
             bimg = self.imgLib["baby"][self.direction][0]
         self.baby.updateImg( bimg )
         self.baby.updatePos( getPos(self, r[0], r[1]) )
-        
+
         if not (delay % 30 ):
             heroX = choice(sprites).rect.left
             if self.rect.left > heroX:
@@ -762,24 +830,20 @@ class DragonEgg(Monster):
                 else:
                     return Fire(getPos(self,0.8,0), self.onlayer+2, randint(1,3), -2)
 
+    def stun(self, duration):
+        pass
+
     def hitted(self, damage, pushed, dmgType):
         # decrease health & no hitback
-        self.health -= (damage*self.realDmgRate)
-        if self.health <= 0:                # broken
+        if self.health<=0:
+            return False
+        true_dmg = round(damage*self.realDmgRate)
+        self.health -= true_dmg
+        self.msgList.append( [getPos(self,0.5,0.5), str(true_dmg), 60] )
+        if self.health <= 0:        # broken
             self.health = 0
             self.crushSnd.play(0)
             self.spurtCanvas.addPebbles(self, 6, type="eggDebri")
-            # alter image
-            self.broken = 0
-            trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
-            self.setImg("iList", 1)
-            self.rect = self.image.get_rect()
-            self.rect.left = trPos[0]-self.rect.width//2
-            self.rect.bottom = trPos[1]
-            # kill baby
-            if hasattr(self, 'baby'):
-                self.baby.kill()
-                del self.baby
             return True
 
     def paint(self, screen):
@@ -788,19 +852,165 @@ class DragonEgg(Monster):
         shadRect.left -= 8
         screen.blit(self.shad, shadRect)
         # draw baby
-        if self.broken<0:
+        if self.health>0:
             screen.blit( self.baby.image, self.baby.rect )
         screen.blit( self.image, self.rect )
         # Hit highlight
         if self.hitBack:
             screen.blit( self.shad, self.rect )
 
-# -----------------------------------
-class CrimsonDragon(Boss):
+# Goalie ----------------------------
+class HellHound(Monster):
+    imgLib = None
+    shadLib = None
 
+    def __init__(self, wallGroup, sideGroup, blockSize, onlayer):
+        if not self.imgLib:
+            HellHound.imgLib = {
+                "iList": createImgList("image/stg1/hellHound0.png", "image/stg1/hellHound1.png"),
+                "jump": createImgList("image/stg1/hellHound_Att.png"),
+                "knock": createImgList("image/stg1/hellHound_Land.png")
+            }
+            HellHound.shadLib = getShadLib(HellHound.imgLib)
+            HellHound.mockSnd = pygame.mixer.Sound("audio/wolf.wav")
+            HellHound.knockSnd = pygame.mixer.Sound("audio/chichengKnock.wav")
+        
+        # calculate its position
+        Monster.__init__(self, "hellHound", (255,0,0,240), 6, 3, onlayer, sideGroup, bar=True)
+        #self.bar = HPBar(self.full, blockVol=200, barH=12)
+        wall = self.initLayer(wallGroup, sideGroup)
+        # initialize the sprite
+        self.reset()
+        self.mask = pygame.mask.from_surface(self.image)
+        self.rect = self.image.get_rect()
+        self.rect.left = wall.rect.left
+        self.rect.bottom = wall.rect.top
+        self.alterSpeed( choice([1,-1]) )
+        self.jumping = False
+        self.dealt = False
+        self.cnt = 350      # count for the loop of shift position
+        self.knockCnt = 0
+        self.max_spd = 5    # horrizontal
+
+    def move(self, sprites, canvas, groupList, knock, GRAVITY):
+        self.checkHitBack()
+        self.count_stun()
+
+        # when knockcnt>0, dealing damage
+        if self.knockCnt>0:
+            self.knockCnt -= 1
+            if not self.dealt:
+                if cldList(self, sprites):
+                    self.dealt = True
+        else:
+            if knock:         # on landing, start dealing damage
+                self.setImg("knock")
+                self.weaponIndx = 2
+                self.knockCnt = 18
+                self.dealt = False
+                self.push = self.pushList[0] if self.direction=="left" else self.pushList[1]
+                for i in (0.2,0.4,0.6,0.8):
+                    canvas.addSpatters(randint(2,6), [3,5,7], [28,32,36], (30,20,20,210), getPos(self,i,0.99), True)
+            # knockCnt = 0的情况，可能的状态有很多
+            elif self.combo>0 and not self.jumping:
+                self.takeOff(sprites, groupList, GRAVITY)
+                self.combo -= 1
+            elif self.jumping:    # jumping
+                self.setImg("jump")
+            else:       # end dealing damage, back to waiting state
+                # update image.
+                if not (self.cnt % 10):
+                    self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                    self.setImg("iList",self.imgIndx)
+            self.mask = pygame.mask.from_surface(self.image)
+        # flickering yellow
+        canvas.addSmoke( 1, (1,2,4), 5, (210,140,20,210), getPos(self,0.5,random()), 60 )
+        # count down for rage actions.
+        self.cnt -= 1
+        if self.cnt<=0:
+            self.cnt = randint(280,300)
+        if self.jumping:
+            self.rect.left += self.speed    # Only consider x here. y is acted by fall()
+        elif not self.jumping and self.cnt==240:
+            if self.stun_time==0:
+                self.takeOff(sprites, groupList, GRAVITY)
+                self.combo = randint(1,3)
+
+    def takeOff(self, sprites, groupList, GRAVITY):
+        self.mockSnd.play(0)
+        tgt = choice(sprites)
+        self.jumping = True
+        tgtPos, myPos = getPos(tgt,0.5,1), getPos(self,0.5,1)
+        # 目标在下方
+        if tgt.onlayer-1<self.onlayer:
+            self.onlayer -= 2
+            self.gravity = -14
+            self.alarmTime = self.estimateTime(14, tgtPos[1]-myPos[1], GRAVITY)
+        # 否则目标在上方或同行
+        else:
+            if (tgt.onlayer-1>self.onlayer) and (str(self.onlayer+2) in groupList):
+                # need to confirm that new layer is in groupList (in case of hero jump to the highest layer)
+                self.onlayer += 2
+            self.gravity = -18
+            self.alarmTime = self.estimateTime(18, tgtPos[1]-myPos[1], GRAVITY)
+        while True:
+            try:
+                self.initLayer(groupList[str(self.onlayer)], groupList["0"])
+            except:
+                self.onlayer -= 2
+            else:
+                break
+        x_spd = round( (tgtPos[0]-myPos[0])/self.alarmTime )
+        if x_spd<-self.max_spd:
+            x_spd = -self.max_spd
+        elif x_spd>self.max_spd:
+            x_spd = self.max_spd
+        self.alterSpeed( x_spd )
+
+    def estimateTime(self, upwardSpd, absVertical, GRAVITY):
+        absDistY = 0
+        for y in range(upwardSpd+1):     # 计算得上升总高度(此过程用时upwardSod减至0)
+            absDistY += y
+        downY = abs(absVertical) + absDistY  # 下降总位移
+        anaSpd = 0
+        estTime = upwardSpd
+        while downY>0:
+            absDistY += anaSpd
+            downY -= anaSpd
+            anaSpd = min(anaSpd+1, GRAVITY)
+            estTime += 1
+        return estTime
+
+    def fall(self, keyLine, groupList, GRAVITY):
+        if self.gravity<GRAVITY:
+            self.gravity += 1
+        self.rect.bottom += self.gravity
+        if self.gravity<0:      # Still in upward action, don't check fall!
+            return
+        while ( pygame.sprite.spritecollide(self, self.wallList, False, collide_mask) ):  # 如果和参数中的物体相撞，则尝试纵坐标-1
+            self.rect.bottom -= 1
+            self.gravity = 0
+            if self.jumping:
+                self.knockSnd.play(0)
+                self.jumping = False
+                return "vib"
+        if getPos(self, 0, 0.5)[1] > keyLine:
+            self.onlayer  = max(self.onlayer-2, -1)
+            self.initLayer( groupList[str(self.onlayer)], groupList["0"] )
+            # 更新obstacle砖块
+            self.renewObstacle(groupList["0"])
+                
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList")
+        self.alarmTime = 0
+        self.combo = 0
+
+# Boss ------------------------------
+class CrimsonDragon(Boss):
     def __init__(self, x, y, onlayer, font):
         # initialize the sprite
-        Boss.__init__(self, font, "CrimsonDragon", (255, 0, 0, 240), 0, 3, onlayer)
+        Boss.__init__(self, font, "CrimsonDragon", (255, 0, 0, 240), 0, 3, onlayer, shadOffset=12)
         self.imgLib = {
             "body": createImgList("image/stg1/DragonBody.png")
         }
@@ -819,7 +1029,6 @@ class CrimsonDragon(Boss):
             flip(self.headLeft[2], True, False) ]
         self.headR = { "left":[ (0,0.6), (0,0.61), (0,0.62) ], "right":[ (1,0.6), (1,0.61), (1,0.62) ] }    # 分别为左和右时的位置信息
         self.head = Ajunction( self.headLeft[2], getPos(self, self.headR[self.direction][0][0], self.headR[self.direction][0][1]) )
-        self.headIndx = 0
         # ------------- wing part ----------------
         self.wingLeft = [ load("image/stg1/wing0.png").convert_alpha(), load("image/stg1/wing1.png").convert_alpha(), load("image/stg1/wing2.png").convert_alpha(), load("image/stg1/wing3.png").convert_alpha(), 
             load("image/stg1/wing2.png").convert_alpha(), load("image/stg1/wing1.png").convert_alpha(), load("image/stg1/wing0.png").convert_alpha() ]
@@ -827,7 +1036,6 @@ class CrimsonDragon(Boss):
             flip(self.wingLeft[4], True, False), flip(self.wingLeft[5], True, False), flip(self.wingLeft[6], True, False) ]
         self.wingR = { "left":[ (0.5,-0.3), (0.5,-0.21), (0.5,0.1), (0.5,0.3), (0.5,0.1), (0.5,-0.21), (0.5,-0.3) ], "right":[ (0.5,-0.3), (0.5,-0.21), (0.5,0.1), (0.5,0.3), (0.5,0.1), (0.5,-0.21), (0.5,-0.3) ] }
         self.wing = Ajunction( self.wingLeft[0], getPos(self, self.wingR[self.direction][0][0], self.wingR[self.direction][0][1]) )
-        self.wingIndx = 0
         # -------------- tail part ---------------
         self.tailLeft = [ load("image/stg1/tail0.png").convert_alpha(), load("image/stg1/tail1.png").convert_alpha(), load("image/stg1/tail2.png").convert_alpha(), 
             load("image/stg1/tail3.png").convert_alpha(), load("image/stg1/tail2.png").convert_alpha(), load("image/stg1/tail1.png").convert_alpha() ]
@@ -835,22 +1043,22 @@ class CrimsonDragon(Boss):
             flip(self.tailLeft[3], True, False), flip(self.tailLeft[4], True, False), flip(self.tailLeft[5], True, False) ]
         self.tailR = { "left":[ (0.76,0.84), (0.76,0.84), (0.72,0.84), (0.68,0.84), (0.72,0.84), (0.76,0.84) ], "right":[ (0.24,0.84), (0.24,0.84), (0.28,0.84), (0.32,0.84), (0.28,0.84), (0.24,0.84) ] }
         self.tail = Ajunction( self.tailLeft[0], getPos(self, self.tailR[self.direction][0][0], self.tailR[self.direction][0][1]) )
-        self.tailIndx = 0
         # ----------- other attributes -------------------------
-        self.cnt = 1600      # count for the loop of shift position
-        self.coolDown = 0    # count for attack coolDown
-        self.nxt = (0, 0)
+        self.reset()
+        self.nxt = getPos(self, 0.5, 0.5)
         self.growlSnd = pygame.mixer.Sound("audio/redDragonGrowl.wav")
         self.moanSnd = pygame.mixer.Sound("audio/redDragonMoan.wav")
         self.upDown = 3      # 悬停状态身体上下振幅
+        self.cnt = 1500      # count for the loop of shift position & rage. should not be stunned!
 
-    def update(self, sprites, canvas):
+    def update(self, delay, sprites, canvas):
         self.checkHitBack()
         self._tipPosition(canvas)
-        if not (self.cnt % 3):
+        self.count_stun()
+        if not (delay % 3):
             if self.shift( self.nxt[0], self.nxt[1] ):
                 # 如果处于悬停状态，则随着扇翅上下摆动，and shakes tail。
-                if not (self.cnt % 18):
+                if not (delay % 18):
                     self.rect.top += self.upDown
                     self.upDown = - self.upDown
                     self.tailIndx = (self.tailIndx+1)%len(self.tailLeft)
@@ -868,34 +1076,36 @@ class CrimsonDragon(Boss):
             self.head.updatePos( getPos(self, self.headR[self.direction][self.headIndx][0], self.headR[self.direction][self.headIndx][1]) )
             self.wing.updatePos( getPos(self, self.wingR[self.direction][self.wingIndx][0], self.wingR[self.direction][self.wingIndx][1]) )
             self.tail.updatePos( getPos(self, self.tailR[self.direction][self.tailIndx][0], self.tailR[self.direction][self.tailIndx][1]) )
-        # count down for rage actions.
-        self.cnt -= 1
-        if self.cnt<=0:
-            self.cnt = 1800
-        elif self.cnt>=240:
-            if not self.cnt%60:
-                self.nxt = ( randint(100,640), randint(80,520) )   # randomize a new position
-                self.direction = "left" if ( self.nxt[0] < getPos(self, 0.5, 0.5)[0] ) else "right"
-        else:
-            self.nxt = ( 520, 80 )
-            self.direction = "left"
-            if not self.cnt%8:
+        
+        if self.stun_time==0:
+            # count down for rage actions.
+            self.cnt -= 1
+            if self.cnt<=0:
+                self.cnt = 1700
+            elif self.cnt>=240:
+                if not self.cnt%60:
+                    self.nxt = ( randint(100,640), randint(80,520) )   # randomize a new position
+                    self.direction = "left" if ( self.nxt[0] < getPos(self, 0.5, 0.5)[0] ) else "right"
+            else:
+                self.nxt = ( 520, 80 )
+                self.direction = "left"
+                if not self.cnt%8:
+                    return self.makeFire( sprites )
+            # deal regular fire attack:
+            self.headIndx = 0
+            if not (self.cnt % 12) and self.coolDown<=0 and random()<0.26:
+                self.growlSnd.play(0)
+                self.coolDown = 90
                 return self.makeFire( sprites )
-        # deal regular fire attack:
-        self.headIndx = 0
-        if not (self.cnt % 12) and self.coolDown<=0 and random()<0.26:
-            self.growlSnd.play(0)
-            self.coolDown = 90
-            return self.makeFire( sprites )
-        elif self.coolDown > 0:
-            self.coolDown -= 1
-            if self.coolDown >= 84:
-                self.headIndx = 1
-            elif self.coolDown >= 78:
-                self.headIndx = 2
-            elif self.coolDown >= 72:
-                self.headIndx = 1
-        return None
+            elif self.coolDown > 0:
+                self.coolDown -= 1
+                if self.coolDown >= 84:
+                    self.headIndx = 1
+                elif self.coolDown >= 78:
+                    self.headIndx = 2
+                elif self.coolDown >= 72:
+                    self.headIndx = 1
+            return None
     
     def makeFire(self, sprites):
         tgt = choice( sprites )
@@ -914,7 +1124,7 @@ class CrimsonDragon(Boss):
             给此函数传递一个surface参数，即可在该surface上绘制（blit）完整的本对象'''
         # draw shadow
         shadRect = self.rect.copy()
-        shadRect.left -= 12
+        shadRect.left -= self.shadOffset
         screen.blit(self.shad, shadRect)
         # draw self
         screen.blit( self.tail.image, self.tail.rect )
@@ -924,7 +1134,13 @@ class CrimsonDragon(Boss):
         # Hit highlight
         if self.hitBack:
             screen.blit( self.shad, self.rect )
-        
+    
+    def reset(self):
+        self.headIndx = 0
+        self.wingIndx = 0
+        self.tailIndx = 0
+        self.coolDown = 0    # count for attack coolDown
+
     def erase(self):
         self.moanSnd.play(0)
         self.head.kill()
@@ -1011,9 +1227,10 @@ class RedDragonFire(InanimSprite):
         del self
         return
 
-# ===========================================================================
-# -------------------------------- Stage 2 ----------------------------------
-# ===========================================================================
+
+# ========================================================================
+# --------------------------------- CP 2 ---------------------------------
+# ========================================================================
 class Column(InanimSprite):
     def __init__(self, bg_size):
         InanimSprite.__init__(self, "column")
@@ -1159,6 +1376,7 @@ class Bat(Monster):
     
     def move(self, delay, sprites):
         self.checkHitBack(obstacle=True)
+        self.count_stun()
         # 睡眠状态。若有hero接近，则将之唤醒。
         if not self.tgt:
             for each in sprites:
@@ -1215,7 +1433,8 @@ class Bat(Monster):
                 if abs(self.speed[1]) > 6:
                     self.vib = -self.vib
                 self.speed[1] += self.vib
-                self.rect.left += self.speed[0]
+                if self.stun_time==0:
+                    self.rect.left += self.speed[0]
                 self.rect.top += self.speed[1]
                 # Change image.
                 if not (delay % 8):
@@ -1227,14 +1446,15 @@ class Bat(Monster):
                     self.mask = pygame.mask.from_surface(self.image)    # 更新mask，使得与hero重合的判断更加精确
                     self.imgIndx = (self.imgIndx+1) % len(self.imgLib["flyList"])
             # deal damage.
-            if self.coolDown==0:
-                for each in sprites:
-                    if collide_mask(self, each):
-                        self.coolDown = 16
-            else:
-                if self.coolDown == 12:
-                    cldList( self, sprites )
-                self.coolDown -= 1
+            if self.stun_time==0:
+                if self.coolDown==0:
+                    for each in sprites:
+                        if collide_mask(self, each):
+                            self.coolDown = 16
+                else:
+                    if self.coolDown == 12:
+                        cldList( self, sprites )
+                    self.coolDown -= 1
 
     def lift(self, dist):
         self.rect.bottom += dist
@@ -1258,37 +1478,37 @@ class Golem(Monster):
         Monster.__init__(self, "golem", (240,240,255,240), 8, 4, onlayer, sideGroup)
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
-        self.imgIndx = 0
-        self.attIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
         self.doom = 0
         self.alterSpeed( choice([-1, 1]) )
 
     def move(self, delay, sprites):
         if self.health>0:
             self.checkHitBack(obstacle=True)
-            # 运动
-            if not (delay%2):
-                self.rect.left += self.speed
-                if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
-                    self.alterSpeed(-self.speed)
-                # 更新图片
-                if self.coolDown<40 and not ( delay % 20 ):
-                    self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-                    self.setImg("iList",self.imgIndx)
-            # 检查攻击
-            if self.coolDown == 0:
-                for each in sprites:
-                    if ( collide_mask(self, each) ):
-                        self.coolDown = 60
-            elif (self.coolDown > 0):
-                self.coolDown -= 1
-                self.bite(sprites)
+            self.count_stun()
+            
+            if self.stun_time==0:
+                # 运动
+                if not (delay%2):
+                    self.rect.left += self.speed
+                    if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
+                        self.alterSpeed(-self.speed)
+                    # 更新图片
+                    if self.coolDown<40 and not ( delay % 20 ):
+                        self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                        self.setImg("iList",self.imgIndx)
+                # 检查攻击
+                if self.coolDown == 0:
+                    for each in sprites:
+                        if ( collide_mask(self, each) ):
+                            self.coolDown = 60
+                elif (self.coolDown > 0):
+                    self.coolDown -= 1
+                    self.bite(sprites)
         else:
             self.doom += 1
             if self.doom == 22:
@@ -1317,13 +1537,21 @@ class Golem(Monster):
         # switch image
         self.setImg("attList",self.attIndx)
     
+    def reset(self):
+        self.imgIndx = 0
+        self.attIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0
+
     def hitted(self, damage, pushed, dmgType):
         if pushed>0:   # 向右击退
             self.hitBack = max( pushed-self.weight, 0 )
         elif pushed<0: # 向左击退
             self.hitBack = min( pushed+self.weight, 0 )
         if self.health>0:
-            self.health -= damage
+            true_dmg = round(damage*self.realDmgRate)
+            self.health -= true_dmg
+            self.msgList.append( [getPos(self,0.5,0.5), str(true_dmg), 60] )
             if self.health <= 0:
                 self.health = 0
                 return True
@@ -1345,11 +1573,10 @@ class Golemite(Monster):
             }
             Golemite.shadLib = getShadLib(Golemite.imgLib)
         
-        Monster.__init__(self, "golemite", (240,240,255,240), 4, 2, onlayer, sideGroup)
+        Monster.__init__(self, "golemite", (240,240,255,240), 4, 2, onlayer, sideGroup, debri=("pebble",2))
         self.category = "golem"
         self.scope = scope
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         if direct == "left":
             self.alterSpeed(-1)
         else:
@@ -1358,44 +1585,38 @@ class Golemite(Monster):
         self.rect = self.image.get_rect()
         self.rect.left = rect.left+ rect.width//2 - self.rect.width//2
         self.rect.bottom = rect.bottom
-        self.coolDown = 0
         self.doom = 0
     
     def move(self, delay, sprites):
         self.checkHitBack(obstacle=True)
-        # deal move
-        if not delay % 2:
-            self.rect.left += self.speed
-            if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
-                self.alterSpeed(-self.speed)
-        if not delay % 8:
-            self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-            self.setImg("iList",self.imgIndx)
-        # deal attack
-        if self.coolDown == 0:
-            for each in sprites:
-                if ( collide_mask(self, each) ):
-                    self.coolDown = 60
-        if (self.coolDown > 0):
-            self.coolDown -= 1
-            if ( self.coolDown == 45 ):
-                cldList( self, sprites )
+        self.count_stun()
+        if self.stun_time==0:
+            # deal move
+            if not delay % 2:
+                self.rect.left += self.speed
+                if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
+                    self.alterSpeed(-self.speed)
+            if not delay % 8:
+                self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                self.setImg("iList",self.imgIndx)
+            # deal attack
+            if self.coolDown == 0:
+                for each in sprites:
+                    if ( collide_mask(self, each) ):
+                        self.coolDown = 60
+            if (self.coolDown > 0):
+                self.coolDown -= 1
+                if ( self.coolDown == 45 ):
+                    cldList( self, sprites )
             
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0
+
     def level(self, dist):
         self.rect.left += dist
         self.scope = (self.scope[0]+dist, self.scope[1]+dist)
-
-    def hitted(self, damage, pushed, dmgType):
-        if pushed>0:   # 向右
-            self.hitBack = max( pushed-self.weight, 0 )
-        elif pushed<0: # 向左
-            self.hitBack = min( pushed+self.weight, 0 )
-        self.health -= damage
-        if self.health <= 0:
-            self.spurtCanvas.addPebbles(self, 2)
-            self.health = 0
-            self.kill()
-            return True
 
 # -----------------------------------
 class Bowler(Monster):
@@ -1418,28 +1639,28 @@ class Bowler(Monster):
             self.wallList.append(aWall)
         wall = choice(self.wallList)
         # initialize the sprite
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
         self.rect.bottom = wall.rect.top
-        self.stoneList = []
 
     def move(self, delay, sprites):
         self.checkHitBack(obstacle=True)
-        if not (delay % 60 ):
-            heroX = choice(sprites).rect.left
-            self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-            trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
-            if self.rect.left > heroX:
-                self.direction = "left"
-            else:
-                self.direction = "right"
-            self.setImg("iList",self.imgIndx)
-            self.rect = self.image.get_rect()
-            self.rect.left = trPos[0]-self.rect.width//2
-            self.rect.bottom = trPos[1]
+        self.count_stun()
+        if self.stun_time==0:
+            if not (delay % 60 ):
+                heroX = choice(sprites).rect.left
+                self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
+                if self.rect.left > heroX:
+                    self.direction = "left"
+                else:
+                    self.direction = "right"
+                self.setImg("iList",self.imgIndx)
+                self.rect = self.image.get_rect()
+                self.rect.left = trPos[0]-self.rect.width//2
+                self.rect.bottom = trPos[1]
 
     def throw(self, delay):
         if not (delay % 120) and (random() > 0.5):  # 控制投石频率
@@ -1448,9 +1669,11 @@ class Bowler(Monster):
             self.rect = self.image.get_rect()
             self.rect.left = trPos[0]-self.rect.width//2
             self.rect.bottom = trPos[1]
-            stone = Stone((self.rect.left, self.rect.bottom), self.onlayer, self.direction)
-            self.stoneList.append(stone)
-            return stone
+            return Stone((self.rect.left, self.rect.bottom), self.onlayer, self.direction)
+
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
 
 class Stone(InanimSprite):
     crushSnd = None
@@ -1474,7 +1697,8 @@ class Stone(InanimSprite):
         self.onlayer = int(onlayer)
         self.gravity = 1
         self.speed = -2 if direction == "left" else 2   # 负数表示向左，正数向右
-        self.health = MB["stone"].health      # 每次横向撞击，health-10
+        self.health = MB["stone"].health
+        self.manner = MB["stone"].manner
 
     def update(self, delay, sideWalls, downWalls, keyLine, sprites, canvas):
         self.rect.left += self.speed
@@ -1524,6 +1748,9 @@ class Stone(InanimSprite):
         if ( self.rect.top >= keyLine ):
             self.onlayer = max(self.onlayer-2, -1)
     
+    def stun(self, duration):
+        pass
+
     def hitted(self, damage, pushed, dmgType):
         if pushed>0:   # 向右击退
             self.hitBack = max( pushed-self.weight, 0 )
@@ -1547,11 +1774,11 @@ class Spider(Monster):
             Spider.shadLib = getShadLib(Spider.imgLib)
         
         # calculate its position
-        Monster.__init__(self, "spider", (180,10,80,240), 3, 1, onlayer)
+        Monster.__init__(self, "spider", (180,10,80,240), 3, 1, onlayer, shadOffset=4)
 
         self.scope_x = boundaries_x
         self.scope_y = boundaries_y
-        self.imgIndx = 0
+        self.reset()
         self.setImg("body",0)
         self.mask = pygame.mask.from_surface(self.image)
         # calculate its position
@@ -1560,38 +1787,36 @@ class Spider(Monster):
         self.rect.top = y
         self.speed = [-3,3]     # initial: left, down
         # ----------- other attributes -------------------------
-        self.coolDown = 0
         self.doom = 0
-        self.cnt = 0         # count for the loop of shift position
-        self.coolDown = 0    # count for attack coolDown
         self.webSnd = pygame.mixer.Sound("audio/spitWeb.wav")
         self.upDown = 1
-        self.parti = None
         self.haltCnt = randint(20,60)
 
     def move(self, delay, sprites):
         self.checkHitBack()
+        self.count_stun()
         if self.haltCnt>0:
             self.haltCnt -= 1
         # update image and move 
         if not delay % 2:
             # move
             if self.haltCnt==0:
-                self.rect.left += self.speed[0]
-                if (self.rect.right >= self.scope_x[1] and self.speed[0] > 0) or (self.rect.left <= self.scope_x[0] and self.speed[0] < 0):
-                    self.speed[0] = -self.speed[0]                
-                self.rect.top += self.speed[1]
-                if (self.rect.bottom >= self.scope_y[1] and self.speed[1] > 0) or (self.rect.top <= self.scope_y[0] and self.speed[1] < 0):
-                    self.speed[1] = -self.speed[1]
-                # 随机停一会或变方向
-                if not delay%24 and random()<0.1:
-                    dice = random()
-                    if dice<0.2:
-                        self.haltCnt = 60
-                    elif dice<0.6:
-                        self.speed[0] = -self.speed[0]
-                    else:
-                        self.speed[1] = - self.speed[1]
+                if self.stun_time==0:
+                    self.rect.left += self.speed[0]
+                    if (self.rect.right >= self.scope_x[1] and self.speed[0] > 0) or (self.rect.left <= self.scope_x[0] and self.speed[0] < 0):
+                        self.speed[0] = -self.speed[0]                
+                    self.rect.top += self.speed[1]
+                    if (self.rect.bottom >= self.scope_y[1] and self.speed[1] > 0) or (self.rect.top <= self.scope_y[0] and self.speed[1] < 0):
+                        self.speed[1] = -self.speed[1]
+                    # 随机停一会或变方向
+                    if not delay%24 and random()<0.1:
+                        dice = random()
+                        if dice<0.2:
+                            self.haltCnt = 60
+                        elif dice<0.6:
+                            self.speed[0] = -self.speed[0]
+                        else:
+                            self.speed[1] = - self.speed[1]
                 if not delay%8:
                     self.rect.top += self.upDown
                     self.upDown = -self.upDown
@@ -1610,16 +1835,21 @@ class Spider(Monster):
                 self.direction = "right"
             elif self.speed[0]<0:
                 self.direction = "left"
+        if self.stun_time==0:
         # Deal Bite.
-        if self.coolDown == 0:
-            for each in sprites:
-                if ( collide_mask(self, each) ):
-                    self.coolDown = 45
-                    self.haltCnt = 30
-        if (self.coolDown > 0):
-            self.coolDown -= 1
-            if (self.coolDown == 36):
-                cldList( self, sprites )
+            if self.coolDown == 0:
+                for each in sprites:
+                    if ( collide_mask(self, each) ):
+                        self.coolDown = 45
+                        self.haltCnt = 30
+            if (self.coolDown > 0):
+                self.coolDown -= 1
+                if (self.coolDown == 36):
+                    cldList( self, sprites )
+
+    def reset(self):
+        self.imgIndx = 0
+        self.coolDown = 0    # count for attack coolDown
 
     def lift(self, dist):
         self.rect.bottom += dist
@@ -1629,22 +1859,12 @@ class Spider(Monster):
         self.rect.left += dist
         self.scope_x = (self.scope_x[0]+dist, self.scope_x[1]+dist)
     
-    def paint(self, screen):
-        # 画阴影
-        shadRect = self.rect.copy()
-        shadRect.left -= 4
-        screen.blit(self.shad, shadRect)
-        screen.blit( self.image, self.rect )
-        # 画打击阴影
-        if self.hitBack:
-            screen.blit( self.shad, self.rect )
-    
-# -----------------------------------
+# Boss ------------------------------
 class GiantSpider(Boss):
 
     def __init__(self, y, onlayer, boundaries_x, boundaries_y, font):
         # initialize the sprite
-        Boss.__init__(self, font, "GiantSpider", (250,80,120,240), 8, 3, onlayer)
+        Boss.__init__(self, font, "GiantSpider", (250,80,120,240), 8, 3, onlayer, shadOffset=4)
         self.scope_x = boundaries_x
         self.scope_y = boundaries_y
         # ----- body part (the core of the CrimsonDragon) ------
@@ -1673,12 +1893,9 @@ class GiantSpider(Boss):
         }
         theR = self.legR[self.direction]["down"][0]
         self.leg = Ajunction( self.legLeft[2], getPos(self, theR[0], theR[1]) )
-        self.legIndx = 0
         # ----------- other attributes -------------------------
-        self.coolDown = 0
         self.doom = False
-        self.cnt = 0         # count for the loop of shift position
-        self.coolDown = 0    # count for attack coolDown
+        self.reset()
         self.webSnd = pygame.mixer.Sound("audio/spitWeb.wav")
         self.moanSnd = pygame.mixer.Sound("audio/redDragonMoan.wav")
         self.upDown = 1
@@ -1688,6 +1905,7 @@ class GiantSpider(Boss):
     def move(self, delay, sprites, canvas):
         self.checkHitBack()
         self._tipPosition(canvas)
+        self.count_stun()
         
         if self.doom:
             childList = []
@@ -1711,58 +1929,59 @@ class GiantSpider(Boss):
                 self.rect.top += self.upDown
                 self.upDown = -self.upDown
             if not ( delay % 8 ):
-                # Randomly spit webs
-                if not self.parti and random()<0.05:
-                    self.webSnd.play(0)
-                    self.haltCnt = 60
-                    # filter out those are not hero
-                    true_hero = []
-                    for each in sprites:
-                        if each.category in ("hero","servant"):
-                            true_hero.append(each)
-                    rect = choice(true_hero).rect.copy()
-                    startPos = getPos(self,0.5,0.5)
-                    finalPos = [rect.left+rect.width//2, rect.top+rect.height//2]
-                    speedX = round( (finalPos[0] - startPos[0]) / 40 )
-                    speedY = round( (finalPos[1] - startPos[1]) / 40 )
-                    if abs(speedY<=10):  # 距离太远就算了
-                        self.parti = [startPos, (speedX, speedY), rect]
-                # move
-                if self.haltCnt==0:
-                    self.rect.left += self.speed[0]
-                    if (self.rect.right >= self.scope_x[1] and self.speed[0] > 0) or (self.rect.left <= self.scope_x[0] and self.speed[0] < 0):
-                        self.speed[0] = -self.speed[0]
-                    if self.speed[0]>0:
-                        self.direction = "right"
-                    elif self.speed[0]<0:
-                        self.direction = "left"
-                    
-                    self.rect.top += self.speed[1]
-                    if (self.rect.bottom >= self.scope_y[1] and self.speed[1] > 0) or (self.rect.top <= self.scope_y[0] and self.speed[1] < 0):
-                        self.speed[1] = -self.speed[1]
-                    # 随机停一会
-                    if random()<0.01:
+                if self.stun_time==0:
+                    # Randomly spit webs
+                    if not self.parti and random()<0.05:
+                        self.webSnd.play(0)
                         self.haltCnt = 60
-                
-                    # 根据速度方向计算出需要rotate的degree，rotate the image
-                    if self.coolDown>=36:
-                        self.setImg("bite")
-                    else:
-                        self.setImg("body")
-                    tmpPos = getPos(self, 0.5, 0.5)
-                    degree = math.degrees( math.atan2(self.speed[0], self.speed[1]) )
-                    self.image = pygame.transform.rotate( self.image, degree )
-                    self.rect = self.image.get_rect()
-                    self.rect.left = tmpPos[0]-self.rect.width//2
-                    self.rect.top = tmpPos[1]-self.rect.height//2
-                    self.shad = pygame.transform.rotate( self.shad, degree )
-                    self.mask = pygame.mask.from_surface(self.image)
-                    # deal legs:
-                    self.legIndx = (self.legIndx+1) % len(self.legLeft)
-                    if self.direction == "left":
-                        self.leg.updateImg( pygame.transform.rotate( self.legLeft[self.legIndx], degree) )
-                    elif self.direction == "right":
-                        self.leg.updateImg( pygame.transform.rotate( self.legRight[self.legIndx], degree ) )
+                        # filter out those are not hero
+                        true_hero = []
+                        for each in sprites:
+                            if each.category in ("hero","servant"):
+                                true_hero.append(each)
+                        rect = choice(true_hero).rect.copy()
+                        startPos = getPos(self,0.5,0.5)
+                        finalPos = [rect.left+rect.width//2, rect.top+rect.height//2]
+                        speedX = round( (finalPos[0] - startPos[0]) / 40 )
+                        speedY = round( (finalPos[1] - startPos[1]) / 40 )
+                        if abs(speedY<=10):  # 距离太远就算了
+                            self.parti = [startPos, (speedX, speedY), rect]
+                    # move
+                    if self.haltCnt==0:
+                        self.rect.left += self.speed[0]
+                        if (self.rect.right >= self.scope_x[1] and self.speed[0] > 0) or (self.rect.left <= self.scope_x[0] and self.speed[0] < 0):
+                            self.speed[0] = -self.speed[0]
+                        if self.speed[0]>0:
+                            self.direction = "right"
+                        elif self.speed[0]<0:
+                            self.direction = "left"
+                        
+                        self.rect.top += self.speed[1]
+                        if (self.rect.bottom >= self.scope_y[1] and self.speed[1] > 0) or (self.rect.top <= self.scope_y[0] and self.speed[1] < 0):
+                            self.speed[1] = -self.speed[1]
+                        # 随机停一会
+                        if random()<0.01:
+                            self.haltCnt = 60
+                    
+                        # 根据速度方向计算出需要rotate的degree，rotate the image
+                        if self.coolDown>=36:
+                            self.setImg("bite")
+                        else:
+                            self.setImg("body")
+                        tmpPos = getPos(self, 0.5, 0.5)
+                        degree = math.degrees( math.atan2(self.speed[0], self.speed[1]) )
+                        self.image = pygame.transform.rotate( self.image, degree )
+                        self.rect = self.image.get_rect()
+                        self.rect.left = tmpPos[0]-self.rect.width//2
+                        self.rect.top = tmpPos[1]-self.rect.height//2
+                        self.shad = pygame.transform.rotate( self.shad, degree )
+                        self.mask = pygame.mask.from_surface(self.image)
+                        # deal legs:
+                        self.legIndx = (self.legIndx+1) % len(self.legLeft)
+                        if self.direction == "left":
+                            self.leg.updateImg( pygame.transform.rotate( self.legLeft[self.legIndx], degree) )
+                        elif self.direction == "right":
+                            self.leg.updateImg( pygame.transform.rotate( self.legRight[self.legIndx], degree ) )
             # Set relative position.
             if self.speed[1]>0:
                 theR = self.legR[self.direction]["down"][self.legIndx]
@@ -1792,9 +2011,15 @@ class GiantSpider(Boss):
                 self.parti = None
                 return [pos, rect]
     
+    def reset(self):
+        self.legIndx = 0
+        self.coolDown = 0    # count for attack coolDown
+
     def hitted(self, damage, pushed, dmgType):
         # decrease health
-        self.health -= (damage*self.realDmgRate)
+        true_dmg = round(damage*self.realDmgRate)
+        self.health -= true_dmg
+        self.msgList.append( [getPos(self,0.5,0.5), str(true_dmg), 60] )
         if self.health <= 0:                # dead。
             self.doom = True
             self.health = 0
@@ -1807,7 +2032,7 @@ class GiantSpider(Boss):
     def paint(self, screen):
         # 画阴影
         shadRect = self.rect.copy()
-        shadRect.left -= 4
+        shadRect.left -= self.shadOffset
         screen.blit(self.shad, shadRect)
         screen.blit( self.leg.image, self.leg.rect )
         screen.blit( self.image, self.rect )
@@ -1823,9 +2048,10 @@ class GiantSpider(Boss):
         self.rect.left += dist
         self.scope_x = (self.scope_x[0]+dist, self.scope_x[1]+dist)
 
-# ===========================================================================
-# -------------------------------- stage3 -----------------------------------
-# ===========================================================================
+
+# ========================================================================
+# --------------------------------- CP 3 ---------------------------------
+# ========================================================================
 class MistGenerator():
     canvas = None
     canvasRect = None
@@ -1915,7 +2141,7 @@ class Skeleton(Monster):
             Skeleton.shadLib = getShadLib(Skeleton.imgLib)
         
         # calculate its position
-        Monster.__init__(self, "skeleton", (255,255,255,240), 3, 1, onlayer, sideGroup)
+        Monster.__init__(self, "skeleton", (255,255,255,240), 3, 1, onlayer, sideGroup, debri=("boneDebri",4))
         self.wallList = []       # 存储本行的所有砖块; # 每次初始化一个新实例时，清空此类的wallList（否则会在上一个实例的基础上再加！）
         posList = []             # 辅助列表，用于暂时存储本行砖块的位置（左边线）
         for aWall in wallGroup:  # 由于spriteGroup不好进行索引/随机选择操作，因此将其中的sprite逐个存入列表中存储
@@ -1943,11 +2169,11 @@ class Skeleton(Monster):
         # initialize the sprite
         self.imgIndx = 0
         self.setImg("popList",0)
+        self.coolDown = 0
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
         self.birth = [wall.rect.left+wall.rect.width//2, wall.rect.top]
         if random()<=0.5:
             self.alterSpeed(-3)
@@ -1958,27 +2184,29 @@ class Skeleton(Monster):
 
     def move(self, delay, sprites):
         self.checkHitBack(obstacle=True)
+        self.count_stun()
         if not (delay % 4): 
             if not self.popping:
-                self.rect.left += self.speed   # pop阶段的最后一张图片和移动阶段的第一张图片大小刚好是相等的，完美对接
-                if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
-                    self.alterSpeed(-self.speed)
-                if not (delay % 8):
-                    # update image
-                    tmpPos = getPos(self, 0.5, 1)
-                    self.setImg("iList",self.imgIndx)
-                    self.mask = pygame.mask.from_surface(self.image)
-                    self.rect = self.image.get_rect()
-                    self.rect.bottom = tmpPos[1]
-                    self.rect.left = tmpPos[0]- self.rect.width//2
-                    self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-                if self.coolDown==0:
-                    for each in sprites:
-                        if ( collide_mask(self, each) ):
-                            self.coolDown = 8  # 归在delay整除4的条件下，故实际间隔为8*4 = 32
-                else:
-                    self.cratch(sprites)
-                    self.coolDown -= 1
+                if self.stun_time==0:
+                    self.rect.left += self.speed   # pop阶段的最后一张图片和移动阶段的第一张图片大小刚好是相等的，完美对接
+                    if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
+                        self.alterSpeed(-self.speed)
+                    if not (delay % 8):
+                        # update image
+                        tmpPos = getPos(self, 0.5, 1)
+                        self.setImg("iList",self.imgIndx)
+                        self.mask = pygame.mask.from_surface(self.image)
+                        self.rect = self.image.get_rect()
+                        self.rect.bottom = tmpPos[1]
+                        self.rect.left = tmpPos[0]- self.rect.width//2
+                        self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                    if self.coolDown==0:
+                        for each in sprites:
+                            if ( collide_mask(self, each) ):
+                                self.coolDown = 8  # 归在delay整除4的条件下，故实际间隔为8*4 = 32
+                    else:
+                        self.cratch(sprites)
+                        self.coolDown -= 1
             elif self.popping:
                 self.setImg("popList",self.imgIndx)
                 self.rect = self.image.get_rect()
@@ -1994,16 +2222,10 @@ class Skeleton(Monster):
             if ( self.coolDown == 5 ):
                 cldList( self, sprites )
     
-    def hitted(self, damage, pushed, dmgType):
-        if pushed>0:   # 向右击退
-            self.hitBack = max( pushed-self.weight, 0 )
-        elif pushed<0: # 向左击退
-            self.hitBack = min( pushed+self.weight, 0 )
-        self.health -= damage
-        if self.health <= 0:
-            self.kill()
-            self.spurtCanvas.addPebbles(self, 4, type="boneDebri")
-            return True
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0
     
     def lift(self, dist):
         self.rect.bottom += dist
@@ -2049,38 +2271,37 @@ class Dead(Monster):
         else:
             self.imgLib = self.imgLibFemale
             self.shadLib = self.shadLibFemale
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left + (wall.rect.width-self.rect.width) // 2
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
         self.lumi = 3
         if random()<=0.5:
             self.alterSpeed(-2)
         else:
             self.alterSpeed(2)
-        self.voming = 0
 
     def move(self, delay, sprites, canvas):
         self.checkHitBack(obstacle=True)
+        self.count_stun()
         if not (delay % 6) and not self.voming: 
-            self.rect.left += self.speed
-            if (self.rect.right >= self.scope[1] and self.speed > 0) or (self.rect.left <= self.scope[0] and self.speed < 0):
-                self.alterSpeed(-self.speed)
-            if not (delay % 12):
-                self.setImg("iList",self.imgIndx)
-                self.mask = pygame.mask.from_surface(self.image)  # 更新rect，使得与hero重合的判断更加精确
-                self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-            if random()<0.04:
-                for hero in sprites:
-                    if -2 < hero.onlayer-self.onlayer+1 < 2:
-                        self.snd.play(0)
-                        break
-                self.voming = 54
-            # Check Hero and Turn.
-            self.detectHero(sprites)
+            if self.stun_time==0:
+                self.rect.left += self.speed
+                if (self.rect.right >= self.scope[1] and self.speed > 0) or (self.rect.left <= self.scope[0] and self.speed < 0):
+                    self.alterSpeed(-self.speed)
+                if not (delay % 12):
+                    self.setImg("iList",self.imgIndx)
+                    self.mask = pygame.mask.from_surface(self.image)  # 更新rect，使得与hero重合的判断更加精确
+                    self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                if random()<0.04:
+                    for hero in sprites:
+                        if -2 < hero.onlayer-self.onlayer+1 < 2:
+                            self.snd.play(0)
+                            break
+                    self.voming = 54
+                # Check Hero and Turn.
+                self.detectHero(sprites)
         if (self.voming > 0):
             self.setImg("att")
             self.voming -= 1
@@ -2096,6 +2317,12 @@ class Dead(Monster):
                 canvas.addAirAtoms(self, 1, getPos(self, startX, 0.5), spd, 
                                     sprites, "corrosive", btLine=self.rect.bottom)
 
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0
+        self.voming = 0
+
     def reportHit(self, hero):
         if hasattr(hero,"infected") and hero.infected<0:
             hero.infect()
@@ -2106,7 +2333,7 @@ class Dead(Monster):
         self.scope = (self.scope[0]+dist, self.scope[1]+dist)
 
 # -----------------------------------
-class Ghost(Monster):  
+class Ghost(Monster):
     imgLib = None
     shadLib = None
 
@@ -2121,19 +2348,15 @@ class Ghost(Monster):
 
         # initialize the sprite
         Monster.__init__(self, "ghost", (255,120,190,120), 6, 0, onlayer)
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         # calculate its position
         self.rect = self.image.get_rect()
         self.rect.left = randint( XRange[0], XRange[1] )
         self.rect.top = y
-
         self.alterSpeed(-1)
-        self.coolDown = 0   # count for attack coolDown
-        self.tgt = None
-        self.nxt = [0, 0]
         self.upDown = 1
+        self.nxt = [0,0]
         # Parameters about second life
         self.extraLife = 1
         self.cnt = 0        # 被打碎时的复生实时倒计时
@@ -2141,6 +2364,7 @@ class Ghost(Monster):
 
     def move(self, delay, sprites, spurtCanvas):
         self.checkHitBack()
+        self.count_stun()
         if self.cnt==0:
             if not (delay % 8 ):
                 # 变换图片
@@ -2158,23 +2382,24 @@ class Ghost(Monster):
                     self.direction = "left" if ( self.nxt[0] < self.rect.left + self.rect.width/2 ) else "right"
                     if self.tgt.health<=0:
                         self.tgt = None
-            # charging motion
-            if not (delay % 4):
-                self.shift( self.nxt[0], self.nxt[1] )
-            if (self.coolDown == 0):
-                for each in sprites:
-                    if collide_mask(self, each):
-                        self.coolDown = 42
-            elif self.coolDown > 0:
-                self.coolDown -= 1
-                if self.coolDown >= 32:
-                    #self.setImg("att")
-                    if self.direction=="left":
-                        self.push = self.pushList[0]
-                    else:
-                        self.push = self.pushList[1]
-                    if self.coolDown == 34:
-                        cldList( self, sprites )
+            if self.stun_time==0:
+                # charging motion
+                if not (delay % 4):
+                    self.shift( self.nxt[0], self.nxt[1] )
+                if (self.coolDown == 0):
+                    for each in sprites:
+                        if collide_mask(self, each):
+                            self.coolDown = 42
+                elif self.coolDown > 0:
+                    self.coolDown -= 1
+                    if self.coolDown >= 32:
+                        #self.setImg("att")
+                        if self.direction=="left":
+                            self.push = self.pushList[0]
+                        else:
+                            self.push = self.pushList[1]
+                        if self.coolDown == 34:
+                            cldList( self, sprites )
         else:
             if self.cnt==self.returnTime:
                 spurtCanvas.addSpatters(7, [3,6,9], [20,24,28], self.bldColor, getPos(self,0.5,0.48), falling=False, back=True)
@@ -2184,6 +2409,12 @@ class Ghost(Monster):
                 return "rejoin"
             else:
                 return "out"
+
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0   # count for attack coolDown
+        self.tgt = None
 
     def shift(self, final_x, final_y):
         spd = 6
@@ -2207,7 +2438,9 @@ class Ghost(Monster):
     
     def hitted(self, damage, pushed, dmgType):
         # decrease health
-        self.health -= damage
+        true_dmg = round(damage*self.realDmgRate)
+        self.health -= true_dmg
+        self.msgList.append( [getPos(self,0.5,0.5), str(true_dmg), 60] )
         if self.health <= 0:        # dead。但是有可能复活
             if self.extraLife>0:
                 self.snd.play(0)
@@ -2244,14 +2477,13 @@ class Ghost(Monster):
         self.rect.top += dist
         self.nxt[1] += dist
     
-# ------------------------------------
+# Boss ------------------------------
 class Vampire(Boss):
     sycthe = None
     
     def __init__(self, groupList, onlayer, boundaries, font):
         # initialize the sprite
         Boss.__init__(self, font, "Vampire", (10,30,10,240), 8, 1, onlayer, sideGroup=groupList["0"])
-        self.onlayer = int(onlayer)
         self.boundaries = boundaries
         self.initLayer(groupList)
         # initialize the sprite
@@ -2261,8 +2493,7 @@ class Vampire(Boss):
             "summon": createImgList( "image/stg3/VampireSummon.png" )
         }
         self.shadLib = getShadLib(self.imgLib)
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         # calculate its position
         self.rect = self.image.get_rect()
@@ -2275,24 +2506,21 @@ class Vampire(Boss):
         self.scytheAttImg = createImgList( "image/stg3/scytheAtt0.png", "image/stg3/scytheAtt1.png", "image/stg3/scytheAtt2.png" )
         self.scythe = Ajunction( self.scytheImg["left"][0], getPos(self, self.scytheR["left"][0], self.scytheR["left"][1]) )
         # ----------- other attributes -------------------------
-        self.coolDown = 0
-        self.maxHealth = self.health
         self.snd = pygame.mixer.Sound("audio/vampireAtt.wav")
         self.laughSnd = pygame.mixer.Sound("audio/vampire_laugh.wav")
         self.alterSpeed( choice([-1,0,1]) )
         self.status = "wandering"          # wandering表示闲逛的状态，alarming表示发现英雄的状态
         self.wpPos = (0, 0, 0)
-        self.tgt = None                    # 指示要攻击的英雄
         self.flying = False
         self.lumi = 4
-        self.summonCD = 360               # 召唤冷却
         self.upDown = 1
-        self.rectList = []
+        self.summonCD = 330               # 召唤冷却
             
     # 这个move()函数是供外界调动的接口，这里仅起根据传入的英雄参数判断状态的作用。判断完成后，修改自身的状态，然后执行相应的函数。
     def move(self, delay, sprites, groupList, canvas):
         self.checkHitBack(obstacle=True)
         self._tipPosition(canvas)
+        self.count_stun()
         
         # Effect
         if not delay%2:
@@ -2301,16 +2529,17 @@ class Vampire(Boss):
             # 眼睛紫光
             for i in (0.4,0.6):
                 canvas.addSmoke( 1, (1,2), 6, (190,40,170,180), getPos(self,i,0.38), 5, speed=[0,0] )
-        # change layer
-        if not (delay%20) and not self.flying and self.status=="wandering" and random()<0.1:
-            self.flying = True
-            hero = choice( sprites )
-            # 向hero所在的层数进逼。由于hero能在的层数一定是合法的，故这里不需要检测层数的合法性（不需边界测试）
-            if self.onlayer > 1 and self.onlayer > hero.onlayer-1:   # 注意，这里由于层数体系不一样，要检查self.layer为1时不能减为-1（那就成了sideWall！）
-                self.onlayer -= 2
-            elif self.onlayer < hero.onlayer-1:
-                self.onlayer += 2
-            self.initLayer(groupList)           # 计算其在新一行的水平scope        
+        if self.stun_time==0:
+            # change layer
+            if not (delay%20) and not self.flying and self.status=="wandering" and random()<0.1:
+                self.flying = True
+                hero = choice( sprites )
+                # 向hero所在的层数进逼。由于hero能在的层数一定是合法的，故这里不需要检测层数的合法性（不需边界测试）
+                if self.onlayer > 1 and self.onlayer > hero.onlayer-1:   # 注意，这里由于层数体系不一样，要检查self.layer为1时不能减为-1（那就成了sideWall！）
+                    self.onlayer -= 2
+                elif self.onlayer < hero.onlayer-1:
+                    self.onlayer += 2
+                self.initLayer(groupList)           # 计算其在新一行的水平scope
         # 优先处理 flying $$$$
         if self.flying:
             self.rect.bottom += ( (self.initPos[1]-getPos(self, 0.5, 1)[1]) // 20 )
@@ -2323,92 +2552,99 @@ class Vampire(Boss):
             if not (delay % 20):
                 self.rect.top += self.upDown
                 self.upDown = - self.upDown
-            for hero in sprites:
-                # 如果有英雄在同一层，则将速度改为朝英雄方向。(这里的两套体系，英雄的层数为偶数，而怪物用的层数都是奇数)
-                if ( (hero.onlayer-1)==self.onlayer and abs( getPos(hero,0.5,0.5)[0]-getPos(self,0.5,0.5)[0] )<=360 ) or self.coolDown>0:
-                    self.status = "alarming"
-                    self.tgt = hero
-                    break     # 这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。问题留着以后修正。
-                else:
-                    self.status = "wandering"
-            if self.status == "wandering":
-                # 游荡状态，删除残影
-                if self.rectList:
-                    self.rectList.pop(0)
-                # wander 部分
-                if (self.speed):                        # speed!=0，在运动。
-                    self.rect.left += self.speed
-                    if (getPos(self, 0.7, 1)[0] >= self.scope[1] and self.speed > 0) or (getPos(self, 0.3, 1)[0] <= self.scope[0] and self.speed < 0):
-                        self.alterSpeed(-self.speed)
-                    if not delay % 20 and random()<0.08:# 随机进入休息状态。
-                        self.alterSpeed(0)
-                elif not delay % 20 and random()<0.08:  # 否则，在休息。此时若随机数满足条件，进入巡逻状态
-                    self.alterSpeed( choice( [1,-1] ) )
-                # wander时还会召唤小型生物。
-                self.summonCD -= 1
-                if self.summonCD <= 36:
-                    if self.summonCD == 36:
-                        self.laughSnd.play(0)
-                    trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
-                    self.setImg("summon")
-                    self.rect = self.image.get_rect()
-                    self.rect.left = trPos[0]-self.rect.width//2
-                    self.rect.bottom = trPos[1]
-                    if self.summonCD == 0:
-                        self.summonCD = 480
-                        babe = choice( ["skeleton", "dead", "ghost"] )
-                        pos = getPos(self, choice( [0.1,0.9] ), 0)
-                        return (babe,pos)
-                    return
-            elif self.status == "alarming":
-                if not self.coolDown:
-                    if getPos( self.tgt, 0.5, 0.5 )[0]>getPos( self, 0.5, 0.5 )[0]:
-                        self.alterSpeed(1)
+            if self.stun_time==0:
+                for hero in sprites:
+                    # 如果有英雄在同一层，则将速度改为朝英雄方向。(两套体系：英雄的层数为偶数，而怪物用的层数都是奇数)
+                    if ( (hero.onlayer-1)==self.onlayer and abs( getPos(hero,0.5,0.5)[0]-getPos(self,0.5,0.5)[0] )<=360 ) or self.coolDown>0:
+                        self.status = "alarming"
+                        self.tgt = hero
+                        break     # 这里碰到第一个英雄符合条件就退出了。如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。问题留着以后修正。
                     else:
-                        self.alterSpeed(-1)
-                #attack部分
-                self.rectList.append(self.rect.copy())
-                if len(self.rectList)>6:
-                    self.rectList.pop(0)
-                self.rect.left += self.speed*8
-                if self.coolDown==0:
+                        self.status = "wandering"
+                if self.status == "wandering":
+                    # 游荡状态，删除残影
+                    if self.rectList:
+                        self.rectList.pop(0)
+                    # wander 部分
+                    if (self.speed):                        # speed!=0，在运动。
+                        self.rect.left += self.speed
+                        if (getPos(self, 0.7, 1)[0] >= self.scope[1] and self.speed > 0) or (getPos(self, 0.3, 1)[0] <= self.scope[0] and self.speed < 0):
+                            self.alterSpeed(-self.speed)
+                        if not delay % 20 and random()<0.08:# 随机进入休息状态。
+                            self.alterSpeed(0)
+                    elif not delay % 20 and random()<0.08:  # 否则，在休息。此时若随机数满足条件，进入巡逻状态
+                        self.alterSpeed( choice( [1,-1] ) )
+                    # wander时还会召唤小型生物。
+                    self.summonCD -= 1
+                    if self.summonCD <= 32:
+                        if self.summonCD == 32:
+                            self.laughSnd.play(0)
+                        trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
+                        self.setImg("summon")
+                        self.rect = self.image.get_rect()
+                        self.rect.left = trPos[0]-self.rect.width//2
+                        self.rect.bottom = trPos[1]
+                        if self.summonCD == 0:
+                            self.summonCD = 420
+                            babe = choice( ["skeleton", "dead", "ghost"] )
+                            pos = getPos(self, choice( [0.1,0.9] ), 0)
+                            return (babe,pos)
+                        return
+                elif self.status == "alarming":
+                    if not self.coolDown:
+                        if getPos( self.tgt, 0.5, 0.5 )[0]>getPos( self, 0.5, 0.5 )[0]:
+                            self.alterSpeed(1)
+                        else:
+                            self.alterSpeed(-1)
+                    #attack部分
+                    self.rectList.append(self.rect.copy())
+                    if len(self.rectList)>6:
+                        self.rectList.pop(0)
+                    self.rect.left += self.speed*8
+                    if self.coolDown==0:
+                        for each in sprites:
+                            if abs(getPos(self, 0.5, 0.5)[0]-getPos(each, 0.5, 0.5)[0])<60:
+                                self.snd.play(0)    # 攻击英雄，咆哮
+                                self.speed = 0
+                                self.coolDown = 44
+                    else:
+                        self.coolDown -= 1
+            
+            # check img
+            if self.coolDown <= 0:
+                self.wpPos = self.scytheR[self.direction]
+                if not (delay % 14 ):
+                    self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                self.setImg("iList",self.imgIndx)
+                self.scythe.updateImg( self.scytheImg[self.direction][0] )
+                self.scythe.updatePos( getPos(self, self.wpPos[0], self.wpPos[1]) )
+            else:   # 被stun reset后，coolDown=0，这一块（攻击）不会被执行
+                if self.coolDown >= 16:
+                    attIndx = 0
+                elif self.coolDown >= 8:
+                    attIndx = 1
                     for each in sprites:
-                        if abs(getPos(self, 0.5, 0.5)[0]-getPos(each, 0.5, 0.5)[0])<60:
-                            self.snd.play(0)    # 攻击英雄，咆哮
-                            self.speed = 0
-                            self.coolDown = 44
+                        if collide_mask(self.scythe, each):
+                            each.hitted( self.damage, self.push, self.dmgType )
+                            self.recover( round(self.damage*0.5) )
                 else:
-                    self.coolDown -= 1
-        # checkImg部分
-        trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
-        if self.coolDown <= 0:
-            self.wpPos = self.scytheR[self.direction]
-            if not (delay % 14 ):
-                self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-            self.setImg("iList",self.imgIndx)
-            self.scythe.updateImg( self.scytheImg[self.direction][0] )
-            self.scythe.updatePos( getPos(self, self.wpPos[0], self.wpPos[1]) )
-        else:
-            if self.coolDown >= 16:
-                attIndx = 0
-            elif self.coolDown >= 8:
-                attIndx = 1
-                for each in sprites:
-                    if collide_mask(self.scythe, each):
-                        each.hitted( self.damage, self.push, self.dmgType )
-                        self.health += self.damage*0.5
-                        if self.health > self.maxHealth:
-                            self.health = self.maxHealth
-            else:
-                attIndx = 2
-            self.wpPos = self.scytheAttR[self.direction][attIndx]
-            self.setImg("attList",attIndx)
-            self.scythe.updateImg( self.scytheAttImg[self.direction][attIndx] )
-            self.scythe.updatePos( getPos(self, self.wpPos[0], self.wpPos[1]) )
-                
-        self.rect = self.image.get_rect()
-        self.rect.left = trPos[0]-self.rect.width//2
-        self.rect.bottom = trPos[1]
+                    attIndx = 2
+                self.wpPos = self.scytheAttR[self.direction][attIndx]
+                self.setImg("attList",attIndx)
+                self.scythe.updateImg( self.scytheAttImg[self.direction][attIndx] )
+                self.scythe.updatePos( getPos(self, self.wpPos[0], self.wpPos[1]) )
+            # checkImg部分
+            trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
+            self.rect = self.image.get_rect()
+            self.rect.left = trPos[0]-self.rect.width//2
+            self.rect.bottom = trPos[1]
+
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.tgt = None         # 指示要攻击的英雄
+        self.coolDown = 0
+        self.rectList = []      # 残影列表
 
     # 此函数用于确定新一行中的位置及scope
     def initLayer(self, groupList):
@@ -2464,7 +2700,7 @@ class Vampire(Boss):
             screen.blit(self.shad, rect)
         # 画阴影
         shadRect = self.rect.copy()
-        shadRect.left -= 8
+        shadRect.left -= self.shadOffset
         screen.blit(self.shad, shadRect)
         #按层级顺序画weapon和self
         if self.wpPos[2]==0:
@@ -2477,9 +2713,10 @@ class Vampire(Boss):
         if self.hitBack:
             screen.blit( self.shad, self.rect )
 
-# ===========================================================================
-# --------------------------------- stage4 ----------------------------------
-# ===========================================================================
+
+# ========================================================================
+# --------------------------------- CP 4 ---------------------------------
+# ========================================================================
 class Snake(Monster): 
     imgLib = None
     shadLib = None
@@ -2496,32 +2733,40 @@ class Snake(Monster):
         Monster.__init__(self, "snake", (250,160,120), 4, 1, onlayer, sideGroup)
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
-        self.imgIndx = 0
-        self.attIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
         self.alterSpeed( choice([-1,1]) )
-        self.tgt = None
 
     def move(self, delay, sprites):
         self.checkHitBack(obstacle=True)
+        self.count_stun()
 
         self.tgt = self.detectHero(sprites)
         # move
         if not self.tgt:
-            self.rect.left += self.speed
-            if (getPos(self,0.75,0)[0]>=self.scope[1] and self.speed>0) or (getPos(self,0.25,0)[0]<=self.scope[0] and self.speed<0):
-                self.alterSpeed( -self.speed )
+            if self.stun_time==0:
+                self.rect.left += self.speed
+                if (getPos(self,0.75,0)[0]>=self.scope[1] and self.speed>0) or (getPos(self,0.25,0)[0]<=self.scope[0] and self.speed<0):
+                    self.alterSpeed( -self.speed )
             if not (delay % 10 ):
                 self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
                 self.setImg("iList",self.imgIndx)
                 self.fitImg()
         else:
-            self.rect.left += self.speed*3
+            if self.stun_time==0:
+                self.rect.left += self.speed*3
+                # Attack
+                if ( self.coolDown==0 ):
+                    for each in sprites:
+                        if collide_mask(self, each):
+                            self.coolDown = 36
+                if (self.coolDown > 0):
+                    self.coolDown -= 1
+                    if ( self.coolDown == 20 ):
+                        cldList( self, sprites )
             if self.tgt.health<=0:
                 self.tgt = None
                 return
@@ -2529,16 +2774,14 @@ class Snake(Monster):
                 self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
                 self.setImg("dash",self.imgIndx)
                 self.fitImg()
-            # Attack
-            if ( self.coolDown==0 ):
-                for each in sprites:
-                    if collide_mask(self, each):
-                        self.coolDown = 36
-            if (self.coolDown > 0):
-                self.coolDown -= 1
-                if ( self.coolDown == 20 ):
-                    cldList( self, sprites )
-        
+    
+    def reset(self):
+        self.imgIndx = 0
+        self.attIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0
+        self.tgt = None
+
     def fitImg(self):
         trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]   # 为保证图片位置正确，临时存储之前的位置信息
         self.mask = pygame.mask.from_surface(self.image)
@@ -2568,13 +2811,12 @@ class Slime(Monster):
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
         self.imgIndx = 0
-        self.attIndx = 0
         self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0          
         self.alterSpeed( choice( [-1, 1] ) )
         self.rise = (0,-7,-13,-18,-13,-7,0)
         self.newSlime = None
@@ -2582,9 +2824,23 @@ class Slime(Monster):
 
     def move(self, delay, sprites):
         self.checkHitBack(obstacle=True)
-        self.rect.left += self.speed
-        if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
-            self.alterSpeed(-self.speed)
+        self.count_stun()
+        if self.stun_time==0:
+            self.rect.left += self.speed
+            if (getPos(self,0.75,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.25,0)[0] <= self.scope[0] and self.speed < 0):
+                self.alterSpeed(-self.speed)
+            # slime应该也能做出反应，但比较迟钝
+            if not delay % 60:
+                self.detectHero(sprites)
+            if ( self.coolDown==0 ):
+                for each in sprites:
+                    if collide_mask(self, each):
+                        self.coolDown = 30
+            if (self.coolDown > 0):
+                self.coolDown -= 1
+                if ( self.coolDown == 20 ):
+                    cldList( self, sprites )
+        
         if not (delay % 5 ):
             trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom-self.rise[self.imgIndx] ]  # 为保证图片位置正确，临时存储之前的位置信息
             self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
@@ -2593,23 +2849,15 @@ class Slime(Monster):
             self.rect = self.image.get_rect()
             self.rect.left = trPos[0]-self.rect.width//2
             self.rect.bottom = trPos[1] + self.rise[self.imgIndx]
-            # slime应该也能做出反应，但比较迟钝
-            if not (delay%60):
-                self.detectHero(sprites)
-        if ( self.coolDown==0 ):
-            for each in sprites:
-                if collide_mask(self, each):
-                    self.coolDown = 30
-        if (self.coolDown > 0):
-            self.coolDown -= 1
-            if ( self.coolDown == 20 ):
-                cldList( self, sprites )
         # If there is a newly generated slime, return it.
         if (self.newSlime):
             newS = self.newSlime
             self.newSlime = None
             return newS
         
+    def reset(self):
+        self.coolDown = 0
+
     def hitted(self, damage, pushed, dmgType):
         if dmgType == "corrosive":
             damage //= 2
@@ -2617,7 +2865,9 @@ class Slime(Monster):
             self.hitBack = max( pushed-self.weight, 0 )
         elif pushed<0: # 向左击退
             self.hitBack = min( pushed+self.weight, 0 )
-        self.health -= damage
+        true_dmg = round(damage*self.realDmgRate)
+        self.health -= true_dmg
+        self.msgList.append( [getPos(self,0.5,0.5), str(true_dmg), 60] )
         if self.health <= 0:   # dead
             self.health = 0
             self.kill()
@@ -2672,6 +2922,7 @@ class Nest(Monster):
         self.rect.top = wall.rect.bottom-8  # link more tight with the block (block bottom is not even)
 
     def move(self, delay, mons):
+        self.count_stun()
         if self.health > 0:
             if not (delay % 24 ):
                 self.imgIndx = (self.imgIndx+1) % len(self.imgLib["eggList"]["left"])
@@ -2689,14 +2940,16 @@ class Nest(Monster):
             self.kill()
             return [ worm1, worm2, worm3 ]
 
+    def stun(self, duration):
+        pass
+    
     def hitted(self, damage, pushed, dmgType):
-        self.health -= damage
+        true_dmg = round(damage*self.realDmgRate)
+        self.health -= true_dmg
+        self.msgList.append( [getPos(self,0.5,0.5), str(true_dmg), 60] )
         if self.health <= 0:
             self.health = 0
             return True
-    
-    def level(self, dist):
-        self.rect.left += dist
 
 class Worm(Monster):  
     imgLib = None
@@ -2729,6 +2982,7 @@ class Worm(Monster):
 
     def move(self, delay, lineWall, keyLine, sideWall, sprites, canvas, GRAVITY):
         self.checkHitBack(obstacle=True)
+        self.count_stun()
         # 无论health和lifespan是否有，都要检查下落
         self.fall(lineWall, keyLine, GRAVITY)
         # 若健康的话，检查与英雄的碰撞
@@ -2736,7 +2990,8 @@ class Worm(Monster):
             self.lifeSpan -= 1
             # 进行水平运动
             if not (delay % 5):
-                self.rect.left += self.speed
+                if self.stun_time==0:
+                    self.rect.left += self.speed
                 self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
                 self.setImg("iList",self.imgIndx)
                 if ( pygame.sprite.spritecollide(self, sideWall, False, collide_mask) ):
@@ -2767,16 +3022,15 @@ class Worm(Monster):
             self.onlayer = max(self.onlayer-2, -1)
         
     def hitted(self, damage, pushed, dmgType):
-        self.health -= damage
+        true_dmg = round(damage*self.realDmgRate)
+        self.health -= true_dmg
+        self.msgList.append( [getPos(self,0.5,0.5), str(true_dmg), 60] )
         if self.health <= 0:
             self.health = 0
             return True    # dead
 
     def drawHealth(self, surface):
         pass
-
-    def level(self, dist):
-        self.rect.left += dist
 
 # -----------------------------------
 class Fly(Monster):  
@@ -2795,8 +3049,7 @@ class Fly(Monster):
 
         # initialize the sprite
         Monster.__init__(self, "fly", (0,255,10,240), 6, 1, onlayer)
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         # calculate its position
         self.rect = self.image.get_rect()
@@ -2804,14 +3057,11 @@ class Fly(Monster):
         self.rightBd = XRange[1]
         self.rect.left = randint( XRange[0], XRange[1] )
         self.rect.top = y
-
         self.alterSpeed(-1)
-        self.cnt = 0       # count for the loop of shift position
-        self.coolDown = 0    # count for attack coolDown
-        self.nxt = [0, 0]
 
     def move(self, delay, sprites):
         self.checkHitBack()
+        self.count_stun()
         if not (delay % 4 ):
             self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
             self.setImg("iList",self.imgIndx)
@@ -2820,26 +3070,34 @@ class Fly(Monster):
             self.cnt = 60
             self.nxt = [ randint(self.leftBd, self.rightBd), randint(20, 580) ]  # randomize a new position
             self.direction = "left" if ( self.nxt[0] < self.rect.left + self.rect.width/2 ) else "right"
-        # charging motion
-        if not (delay % 3):
-            self.shift( self.nxt[0], self.nxt[1] )
-            self.cnt -= 1
-            if random()<0.02:
-                self.snd.play(0)
-        if (self.coolDown == 0):
-            for each in sprites:
-                if collide_mask(self, each):
-                    self.coolDown = 42
-        elif self.coolDown > 0:
-            self.coolDown -= 1
-            if self.coolDown >= 32:
-                self.setImg("att")
-                if self.direction=="left":
-                    self.push = self.pushList[0]
-                else:
-                    self.push = self.pushList[1]
-                if self.coolDown == 34:
-                    cldList( self, sprites )
+        if self.stun_time==0:
+            # charging motion
+            if not (delay % 3):
+                self.shift( self.nxt[0], self.nxt[1] )
+                self.cnt -= 1
+                if random()<0.02:
+                    self.snd.play(0)
+            if (self.coolDown == 0):
+                for each in sprites:
+                    if collide_mask(self, each):
+                        self.coolDown = 42
+            elif self.coolDown > 0:
+                self.coolDown -= 1
+                if self.coolDown >= 32:
+                    self.setImg("att")
+                    if self.direction=="left":
+                        self.push = self.pushList[0]
+                    else:
+                        self.push = self.pushList[1]
+                    if self.coolDown == 34:
+                        cldList( self, sprites )
+
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.cnt = 0       # count for the loop of shift position
+        self.coolDown = 0    # count for attack coolDown
+        self.nxt = [0, 0]
 
     def shift(self, final_x, final_y):
         maxSpan = 8
@@ -2877,19 +3135,18 @@ class Fly(Monster):
         self.rect.top += dist
         self.nxt[1] += dist
 
-# -----------------------------------
+# Boss ------------------------------
 class MutatedFungus(Boss):
     def __init__(self, xRange, y, onlayer, font):
         # initialize the sprite
-        Boss.__init__(self, font, "MutatedFungus", (255,190,140,240), 1, 1, onlayer)
+        Boss.__init__(self, font, "MutatedFungus", (255,190,140,240), 1, 1, onlayer, shadOffset=12)
         self.xRange = xRange
         # ----- body part (the core of the Python) ------
         self.imgLib = {
             "body": createImgList("image/stg4/fungus.png")
         }
         self.shadLib = getShadLib(self.imgLib)
-        self.imgIndx = 0
-        self.setImg("body")
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         # calculate its position
         self.rect = self.image.get_rect()
@@ -2900,30 +3157,30 @@ class MutatedFungus(Boss):
         self.tentRight = [ pygame.transform.flip(self.tentLeft[0], True, False), pygame.transform.flip(self.tentLeft[1], True, False) ]
         self.tentR = { "left":[ (0.5,1.1), (0.5,1.1) ], "right":[ (0.5,1.1), (0.5,1.1) ] }
         self.tent = Ajunction( self.tentLeft[0], getPos(self, self.tentR[self.direction][0][0], self.tentR[self.direction][0][1]) )
-        self.tentIndx = 0
         # ----------- other attributes -------------------------
         #self.fireSnd = pygame.mixer.Sound("audio/MachineGrenade.wav")
         #self.moanSnd = pygame.mixer.Sound("audio/MachineCollapse.wav")
+        self.cnt = 1020      # count for the loop of shift position
         self.alterSpeed(0)
-        self.cnt = 1080      # count for the loop of shift position
-        self.coolDown = 0    # count for attack coolDown
-        self.nxt = (0, 0)
         self.upDown = 1
         self.releaseInter = 60  # 释放孢子的间隔，可能随着体力降低而加快
 
     def move(self, delay, heroes):
         self.checkHitBack()
         self._tipPosition(self.spurtCanvas)
+        self.count_stun()
+
         if not self.cnt%4:
             self.spurtCanvas.addSmoke(2, (3,5,7), 5, (200,255,180,250), getPos(self,0.5,random()), 60)
-            self.shift( self.nxt[0], self.nxt[1] )
+            if self.stun_time==0:
+                self.shift( self.nxt[0], self.nxt[1] )
             # 上下摆动
             self.rect.top += self.upDown
             self.upDown = - self.upDown
         # count down for rage actions.
         self.cnt -= 1
         if self.cnt<=0:
-            self.cnt = 1480
+            self.cnt = 1420
         else:
             if not self.cnt%60:
                 self.nxt = ( randint( self.xRange[0], self.xRange[1] ), randint(40,520) )   # randomize a new position
@@ -2961,10 +3218,17 @@ class MutatedFungus(Boss):
             miniFungus = MiniFungus( [self.rect.left+60,self.rect.right-60], myPos[1], spd )
             return miniFungus
 
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("body")
+        self.tentIndx = 0
+        self.coolDown = 0    # count for attack coolDown
+        self.nxt = (0, 0)
+
     def paint(self, screen):
         # draw shadow
         shadRect = self.rect.copy()
-        shadRect.left -= 12
+        shadRect.left -= self.shadOffset
         screen.blit(self.shad, shadRect)
         # draw self
         screen.blit( self.tent.image, self.tent.rect )
@@ -2978,7 +3242,7 @@ class MutatedFungus(Boss):
         y = self.rect.top + self.rect.height/2
         if (x == final_x) or (y == final_y):
             return True   # 表示已到目标
-        maxSpan = 4
+        maxSpan = 5
         spd = 5
         dist = 0
         if (x < final_x):
@@ -3014,6 +3278,7 @@ class MiniFungus(InanimSprite):
         self.weight = 0
         self.damage = MB["miniFungus"].damage
         self.dmgType = MB["miniFungus"].dmgType
+        self.manner = MB["miniFungus"].manner
 
         self.image = load("image/stg4/miniFungus.png").convert_alpha()
         if random()<0.5:
@@ -3042,6 +3307,9 @@ class MiniFungus(InanimSprite):
         if cldList(self, sprites):
             self.hitted( self.health, 0, "physical")
 
+    def stun(self, duration):
+        pass
+
     def hitted(self, damage, pushed, dmgType):
         # decrease health
         self.health -= damage
@@ -3052,9 +3320,10 @@ class MiniFungus(InanimSprite):
     def drawHealth(self, surface):
         pass
 
-# ==========================================================================
-# ---------------------------------- stage5 --------------------------------
-# ==========================================================================
+
+# ========================================================================
+# --------------------------------- CP 5 ---------------------------------
+# ========================================================================
 class blizzardGenerator():
     # 借助model的spurtcanvas绘制。自身并不维护一个画布。
     def __init__(self, bg_size, TMin, TMax):
@@ -3141,34 +3410,35 @@ class Wolf(Monster):
         self.scope = (leftMax, rightMax)
         # initialize the sprite
         self.imgIndx = 0
-        self.attIndx = 0
         self.setImg("iList",0)
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left+wall.rect.width//2-self.rect.width//2
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
+        self.reset()
         self.alterSpeed( choice( [-2, 0, 2] ) )
         self.jumping = False
         self.status = "wandering"          # wandering表示闲逛的状态，alarming表示发现英雄的状态
-        self.tgt = None                    # 指示要攻击的英雄
 
     # 这个move()函数是供外界调动的接口，这里仅起根据传入的英雄参数判断状态的作用。判断完成后，修改自身的状态，然后执行相应的函数。
     def move(self, delay, sprites, spurtCanvas):
-        for hero in sprites:
-            # 如果有英雄在同一层，则将速度改为朝英雄方向。(这里的两套体系，英雄的层数为偶数，而怪物用的层数都是奇数)
-            if (hero.onlayer-1)==self.onlayer and ( self.scope[0]<=getPos(hero,1,0.5)[0] ) and ( getPos(hero,0,0.5)[0]<=self.scope[1] ):
-                self.status = "alarming"
-                self.tgt = hero
-                break      # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。问题留着以后修正。
-            else:
-                self.status = "wandering"
+        self.checkHitBack(obstacle=True)
+        self.count_stun()
+
+        if self.stun_time==0:
+            for hero in sprites:
+                # 如果有英雄在同一层，则将速度改为朝英雄方向。(这里的两套体系，英雄的层数为偶数，而怪物用的层数都是奇数)
+                if (hero.onlayer-1)==self.onlayer and ( self.scope[0]<=getPos(hero,1,0.5)[0] ) and ( getPos(hero,0,0.5)[0]<=self.scope[1] ):
+                    self.status = "alarming"
+                    self.tgt = hero
+                    break      # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。问题留着以后修正。
+                else:
+                    self.status = "wandering"
         if self.status == "wandering":
             self.wander( delay, spurtCanvas )
         elif self.status == "alarming":
             self.attack( sprites )
         self.checkImg(delay)
-        self.checkHitBack(obstacle=True)
 
     def checkImg(self, delay):
         trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
@@ -3197,9 +3467,10 @@ class Wolf(Monster):
     def wander(self, delay, canvas):
         if (self.speed):                        # speed!=0，在运动。
             if not self.jumping:
-                self.rect.left += self.speed
-                if self.imgIndx in (4,5):
-                    canvas.addSpatters( 2, (1,2,3), [10,12,14], (255,255,255,210), getPos(self,0.25+random()*0.5,1), True )
+                if self.stun_time==0:       # 地面状态才可考虑stun效果
+                    self.rect.left += self.speed
+                    if self.imgIndx in (4,5):
+                        canvas.addSpatters( 2, (1,2,3), [10,12,14], (255,255,255,210), getPos(self,0.25+random()*0.5,1), True )
             else:
                 self.rect.left += self.speed*1.5
             if (getPos(self, 0.7, 1)[0] >= self.scope[1] and self.speed > 0) or (getPos(self, 0.3, 1)[0] <= self.scope[0] and self.speed < 0):
@@ -3210,6 +3481,8 @@ class Wolf(Monster):
             self.alterSpeed( choice( [2,-2] ) )
     
     def attack(self, sprites):
+        if self.stun_time!=0:   # stun状态下不可攻击
+            return
         if getPos( self.tgt, 1, 0 )[0]<getPos( self, 0, 0 )[0]:
             self.alterSpeed(-2)
         elif getPos( self.tgt, 0, 0 )[0]>getPos( self, 1, 0 )[0]:
@@ -3227,6 +3500,10 @@ class Wolf(Monster):
             self.coolDown -= 1
             if ( self.coolDown == 42 ):
                 cldList( self, sprites )
+
+    def reset(self):
+        self.coolDown = 0
+        self.tgt = None             # 指示要攻击的英雄
 
     def level(self, dist):
         self.rect.left += dist
@@ -3258,59 +3535,57 @@ class IceTroll(Monster):
         Monster.__init__(self, "iceTroll", (255,0,0,240), 5, 3, onlayer, sideGroup)
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
-        self.imgIndx = 0
-        self.attIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.damage = MB["iceTroll"].damage
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
         self.alterSpeed( choice([-1,1]) )
-        self.airCnt = 0           # indicate if I'm spitting!
         self.hitAccum = 0
 
     def move(self, delay, sprites, canvas):
         self.checkHitBack(obstacle=True)
-        if (self.airCnt==0):
-            # Check Hero and Turn.
-            if not delay%5:
-                for hero in sprites:
-                    heroPos = getPos(hero,0.5,0)
-                    myPos = getPos(self,0.5,0)
-                    # 如果有英雄在同一层，则将速度改为朝英雄方向。
-                    if (hero.onlayer-1)==self.onlayer:
-                        # 判断是否需要转向
-                        if ( self.scope[0]<=heroPos[0]<=self.scope[1] ):
-                            if self.speed*( heroPos[0]-myPos[0] ) < 0:
-                                self.alterSpeed(-self.speed)
-                                break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。
-                        if (self.speed<0 and -175<=heroPos[0]-myPos[0]<0) or (self.speed>0 and 0<heroPos[0]-myPos[0]<175):  # 开喷
-                            self.airCnt = 72
-                            self.snd.play(0)
-            if not (delay % 2):
-                self.rect.left += self.speed
-                if (getPos(self,0.8,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.2,0)[0] <= self.scope[0] and self.speed < 0):
-                    self.alterSpeed(-self.speed)
-            if not (delay % 8):
-                self.setImg("iList",self.imgIndx)
-                self.mask = pygame.mask.from_surface(self.image)    # 更新rect，使得与hero重合的判断更加精确
-                self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-        elif (self.airCnt > 0):
-            self.airCnt -= 1
-            if self.airCnt > 54:
-                self.setImg("alarm")
-            else:
-                self.setImg("att")
-                if self.speed <= 0:
-                    spd = [ choice([-3,-2]), choice([-3, -2, -1, 1, 2, 3]) ]
-                    startX = 0.32
-                elif self.speed > 0:
-                    spd = [ choice([2,3]), choice([-3, -2, -1, 1, 2, 3]) ]
-                    startX = 0.68
-                # 每次刷新均吐出2个气团
-                canvas.addAirAtoms( self, 2, getPos(self, startX, 0.32), spd, sprites, "freezing" )
+        self.count_stun()
+        if self.stun_time==0:
+            if (self.airCnt==0):
+                # Check Hero and Turn.
+                if not delay%5:
+                    for hero in sprites:
+                        heroPos = getPos(hero,0.5,0)
+                        myPos = getPos(self,0.5,0)
+                        # 如果有英雄在同一层，则将速度改为朝英雄方向。
+                        if (hero.onlayer-1)==self.onlayer:
+                            # 判断是否需要转向
+                            if ( self.scope[0]<=heroPos[0]<=self.scope[1] ):
+                                if self.speed*( heroPos[0]-myPos[0] ) < 0:
+                                    self.alterSpeed(-self.speed)
+                                    break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。
+                            if (self.speed<0 and -175<=heroPos[0]-myPos[0]<0) or (self.speed>0 and 0<heroPos[0]-myPos[0]<175):  # 开喷
+                                self.airCnt = 72
+                                self.snd.play(0)
+                if not (delay % 2):
+                    self.rect.left += self.speed
+                    if (getPos(self,0.8,0)[0] >= self.scope[1] and self.speed > 0) or (getPos(self,0.2,0)[0] <= self.scope[0] and self.speed < 0):
+                        self.alterSpeed(-self.speed)
+                if not (delay % 8):
+                    self.setImg("iList",self.imgIndx)
+                    self.mask = pygame.mask.from_surface(self.image)    # 更新rect，使得与hero重合的判断更加精确
+                    self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+            elif (self.airCnt > 0):
+                self.airCnt -= 1
+                if self.airCnt > 54:
+                    self.setImg("alarm")
+                else:
+                    self.setImg("att")
+                    if self.speed <= 0:
+                        spd = [ choice([-3,-2]), choice([-3, -2, -1, 1, 2, 3]) ]
+                        startX = 0.32
+                    elif self.speed > 0:
+                        spd = [ choice([2,3]), choice([-3, -2, -1, 1, 2, 3]) ]
+                        startX = 0.68
+                    # 每次刷新均吐出2个气团
+                    canvas.addAirAtoms( self, 2, getPos(self, startX, 0.32), spd, sprites, "freezing" )
 
     def reportHit(self, tgt):
         self.hitAccum += 1
@@ -3318,6 +3593,11 @@ class IceTroll(Monster):
             self.hitAccum = 0
             tgt.hitted( self.damage, self.push, "freezing" )
             tgt.freeze(1)   # 速度-1
+
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.airCnt = 0           # indicate if spitting!
 
     def level(self, dist):
         self.rect.left += dist
@@ -3353,6 +3633,7 @@ class IceSpirit(Monster):
 
     def move(self, delay, sprites, spurtCanvas):
         self.checkHitBack()
+        self.count_stun()
         if not (delay % 5 ):
             self.angle = (self.angle+20) % 360
             self.image = rot_center(self.ori_image, self.angle)
@@ -3360,21 +3641,22 @@ class IceSpirit(Monster):
         # 漂浮移动
         self.rect.left += self.speed[0]
         self.rect.top += self.speed[1]
-        # 检查目标，偏折方向
-        self.cnt -= 1
-        if self.cnt<=0:
-            self.cnt = choice(self.alterSec)
-            tgt = choice(sprites)
-            my_ctr = getPos(self, 0.5, 0.5)
-            tgt_ctr = getPos(tgt, 0.5, 0.5)
-            if my_ctr[0]>tgt_ctr[0] and self.speed[0]>-3:
-                self.speed[0] -= 1
-            elif my_ctr[0]<tgt_ctr[0] and self.speed[0]<3:
-                self.speed[0] += 1
-            if my_ctr[1]>tgt_ctr[1] and self.speed[1]>-3:
-                self.speed[1] -= 1
-            elif my_ctr[1]<tgt_ctr[0] and self.speed[1]<3:
-                self.speed[1] += 1
+        if self.stun_time==0:
+            # 检查目标，偏折方向
+            self.cnt -= 1
+            if self.cnt<=0:
+                self.cnt = choice(self.alterSec)
+                tgt = choice(sprites)
+                my_ctr = getPos(self, 0.5, 0.5)
+                tgt_ctr = getPos(tgt, 0.5, 0.5)
+                if my_ctr[0]>tgt_ctr[0] and self.speed[0]>-3:
+                    self.speed[0] -= 1
+                elif my_ctr[0]<tgt_ctr[0] and self.speed[0]<3:
+                    self.speed[0] += 1
+                if my_ctr[1]>tgt_ctr[1] and self.speed[1]>-3:
+                    self.speed[1] -= 1
+                elif my_ctr[1]<tgt_ctr[0] and self.speed[1]<3:
+                    self.speed[1] += 1
         spurtCanvas.addTrails([2,3,5], [16,20,24], (160,220,255,200), getPos(self,random(),0.6))
         hero = cldList(self, sprites)
         if hero:
@@ -3384,7 +3666,9 @@ class IceSpirit(Monster):
 
     def hitted(self, damage, pushed, dmgType):
         # decrease health
-        self.health -= (damage*self.realDmgRate)
+        true_dmg = round(damage*self.realDmgRate)
+        self.health -= true_dmg
+        self.msgList.append( [getPos(self,0.5,0.5), str(true_dmg), 60] )
         if self.health <= 0:                # dead。
             self.health = 0
             self.spurtCanvas.addExplosion( getPos(self,0.5,0.5), 28, 12, waveColor=(180,180,240,240), spatColor=(150,150,220,240) )
@@ -3411,68 +3695,64 @@ class Eagle(Monster):
 
         # initialize the sprite
         Monster.__init__(self, "eagle", (255,0,0,240), 8, 1, onlayer)
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         # calculate its position
         self.rect = self.image.get_rect()
-        self.leftBd = XRange[0]
-        self.rightBd = XRange[1]
+        self.leftBd, self.rightBd= XRange
         self.rect.left = randint( XRange[0], XRange[1] )
         self.rect.top = y
-
         self.alterSpeed(-1)
-        self.cnt = randint(90, 105)       # count for the loop of charging
-        self.charging = False
-        self.dealt = False
         self.nxt = [randint(self.leftBd,self.rightBd), randint(y-10, y+10)]
         self.upDown = 2
         self.bufRange = 1.2
 
     def move(self, delay, sprites, spurtCanvas):
         self.checkHitBack()
+        self.count_stun()
         if not self.charging and not (delay % 6 ):  # 没有俯冲时，正常扇翅
             self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
             self.setImg("iList",self.imgIndx)
             self.rect.top += self.upDown
             self.upDown = -self.upDown
-        # find tgt and goes to charge
-        if self.cnt == 0:
-            self.cnt = randint(170, 210)
-            # 获取位置数据
-            aim = getPos(choice(sprites),0.5,0.5)
-            myPos = getPos( self, 0.5, 0.5 )
-            # 如果水平距离hero太近，则先飞远
-            if abs(aim[0]-myPos[0])<140:
-                pos1 = randint(self.leftBd-10,self.leftBd+200)
-                pos2 = randint(self.rightBd-200,self.rightBd+10)
-                self.nxt = [choice([pos1, pos2]), randint(40,180)]
-                self.direction = "left" if ( self.nxt[0] < self.rect.left + self.rect.width/2 ) else "right"
-            # 否则，就可以冲冲冲
-            else:
-                self.snd.play(0)
-                self.charging = True
-                self.dealt = False
-                deltaX = ( aim[0] - myPos[0] )*self.bufRange
-                deltaY = ( aim[1] - myPos[1] )*self.bufRange
-                self.nxt = [myPos[0]+deltaX, myPos[1]+deltaY]
-                self.direction = "left" if ( self.nxt[0] < self.rect.left + self.rect.width/2 ) else "right"
-                if self.direction=="left":
-                    self.push = self.pushList[0]
+        if self.stun_time==0:
+            # find tgt and goes to charge
+            if self.cnt == 0:
+                self.cnt = randint(170, 210)
+                # 获取位置数据
+                aim = getPos(choice(sprites),0.5,0.5)
+                myPos = getPos( self, 0.5, 0.5 )
+                # 如果水平距离hero太近，则先飞远
+                if abs(aim[0]-myPos[0])<140:
+                    pos1 = randint(self.leftBd-10,self.leftBd+200)
+                    pos2 = randint(self.rightBd-200,self.rightBd+10)
+                    self.nxt = [choice([pos1, pos2]), randint(40,180)]
+                    self.direction = "left" if ( self.nxt[0] < self.rect.left + self.rect.width/2 ) else "right"
+                # 否则，就可以冲冲冲
                 else:
-                    self.push = self.pushList[1]
-                self.setImg("att")
-                self.rect = self.image.get_rect()
-                self.rect.left = myPos[0]-self.rect.width//2
-                self.rect.top = myPos[1]-self.rect.height//2
-                self.mask = pygame.mask.from_surface(self.image)
-        # Adjusting position.
-        self.shift( self.nxt[0], self.nxt[1] )
-        self.cnt -= 1
-        if self.charging:
-            spurtCanvas.addTrails([2,3,4], [14,16,20], (210,210,220,200), getPos(self,random(),0.7))
-            if not self.dealt and cldList( self, sprites ):
-                self.dealt = True
+                    self.snd.play(0)
+                    self.charging = True
+                    self.dealt = False
+                    deltaX = ( aim[0] - myPos[0] )*self.bufRange
+                    deltaY = ( aim[1] - myPos[1] )*self.bufRange
+                    self.nxt = [myPos[0]+deltaX, myPos[1]+deltaY]
+                    self.direction = "left" if ( self.nxt[0] < self.rect.left + self.rect.width/2 ) else "right"
+                    if self.direction=="left":
+                        self.push = self.pushList[0]
+                    else:
+                        self.push = self.pushList[1]
+                    self.setImg("att")
+                    self.rect = self.image.get_rect()
+                    self.rect.left = myPos[0]-self.rect.width//2
+                    self.rect.top = myPos[1]-self.rect.height//2
+                    self.mask = pygame.mask.from_surface(self.image)
+            # Adjusting position.
+            self.shift( self.nxt[0], self.nxt[1] )
+            self.cnt -= 1
+            if self.charging:
+                spurtCanvas.addTrails([2,3,4], [14,16,20], (210,210,220,200), getPos(self,random(),0.7))
+                if not self.dealt and cldList( self, sprites ):
+                    self.dealt = True
 
     def shift(self, final_x, final_y):
         maxSpan = 4
@@ -3509,6 +3789,13 @@ class Eagle(Monster):
                 dist = maxSpan
             self.rect.top -= dist
     
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.cnt = randint(90, 105)       # count for the loop of charging
+        self.charging = False
+        self.dealt = False
+
     def erase(self):
         self.snd.stop()
         self.kill()
@@ -3524,21 +3811,20 @@ class Eagle(Monster):
         self.rect.top += dist
         self.nxt[1] += dist
     
-# -----------------------------------
+# Boss ------------------------------
 class FrostTitan(Boss):
     summonAct = 90  # 从0-该数表示召唤状态
+
     def __init__(self, xRange, y, onlayer, font):
         # initialize the sprite
-        Boss.__init__(self, font, "FrostTitan", (250,90,80,240), 4, 4, onlayer)
-        self.onlayer = int(onlayer)
+        Boss.__init__(self, font, "FrostTitan", (250,90,80,240), 4, 4, onlayer, shadOffset=12)
         # ----- body part (the core of the FrostTitan) ------
         self.imgLib = {
             "body": createImgList("image/stg5/FrostTitan1.png","image/stg5/FrostTitan2.png"),
             "summon": createImgList("image/stg5/FrostTitanSummon.png")
         }
         self.shadLib = getShadLib(self.imgLib)
-        self.imgIndx = 0
-        self.setImg("body",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.xRange = xRange
         # calculate its position
@@ -3546,51 +3832,54 @@ class FrostTitan(Boss):
         self.rect.left = randint( self.xRange[0], self.xRange[1] ) - self.rect.width//2
         self.rect.top = y
         self.alterSpeed(0)
-
         self.cnt = 1080      # count for the loop of shift position
-        self.coolDown = 0    # count for attack coolDown
         self.nxt = (0, 0)
         self.upDown = 2
 
     def move(self, delay, sprites, canvas, bg_size):
         self.checkHitBack()
         self._tipPosition(canvas)
-        if not self.cnt%4:
+        self.count_stun()
+
+        if not delay%4:
             self.spurtCanvas.addSmoke(2, (3,5,7), 5, (210,210,255,250), getPos(self,0.5,random()), 30)
-            self.shift( self.nxt[0], self.nxt[1] )
-            # 随着扇翅上下摆动
+            # 上下摆动
             self.rect.top += self.upDown
             self.upDown = - self.upDown
-            if not (self.cnt % 12):
-                if self.cnt>self.summonAct:     # 平常状态
-                    self.imgIndx = (self.imgIndx+1) % len(self.imgLib["body"])
-                    self.setImg("body", self.imgIndx)
-                else:           # 召唤状态
-                    self.setImg("summon")
-                self.mask = pygame.mask.from_surface(self.image)
-        # count down for rage actions.
-        self.cnt -= 1
-        if self.cnt<=0:
-            self.cnt = 1580
-        else:
-            if not self.cnt%60:
-                self.nxt = ( randint( self.xRange[0], self.xRange[1] ), randint(40,520) )   # randomize a new position
-                self.direction = "left" if ( self.nxt[0] < getPos(self, 0.5, 0.5)[0] ) else "right"
-        # deal regular snowball attack:
-        if not (self.cnt % 12) and (self.coolDown<=0) and (self.cnt>self.summonAct) and random()<0.2:
-            #self.growlSnd.play(0)
-            self.coolDown = 120
-        elif self.coolDown > 0:
-            self.coolDown -= 1
-            if self.coolDown in (115, 85):
-                return self.makeSnowball( sprites )
-        # Create Ice Spirits.
-        if self.cnt in (10,35,60):
-            myPos = getPos(self,0.1,0.2) if self.direction=="left" else getPos(self,0.9,0.2)
-            spirit = IceSpirit(self.xRange, myPos[1], self.onlayer)
-            spirit.coin = 0
-            spirit.rect.left = myPos[0]-spirit.rect.width//2
-            return spirit
+            if self.stun_time==0:
+                self.shift( self.nxt[0], self.nxt[1] )
+                if not delay % 12:
+                    if self.cnt>self.summonAct:     # 平常状态
+                        self.imgIndx = (self.imgIndx+1) % len(self.imgLib["body"])
+                        self.setImg("body", self.imgIndx)
+                    else:           # 召唤状态
+                        self.setImg("summon")
+                    self.mask = pygame.mask.from_surface(self.image)
+        
+        if self.stun_time==0:
+            # count down for rage actions.
+            self.cnt -= 1
+            if self.cnt<=0:
+                self.cnt = 1580
+            else:
+                if not delay%60:
+                    self.nxt = ( randint( self.xRange[0], self.xRange[1] ), randint(40,520) )   # randomize a new position
+                    self.direction = "left" if ( self.nxt[0] < getPos(self, 0.5, 0.5)[0] ) else "right"
+            # deal regular snowball attack:
+            if not (self.cnt % 12) and (self.coolDown<=0) and (self.cnt>self.summonAct) and random()<0.2:
+                #self.growlSnd.play(0)
+                self.coolDown = 120
+            elif self.coolDown > 0:
+                self.coolDown -= 1
+                if self.coolDown in (115, 85):
+                    return self.makeSnowball( sprites )
+            # Create Ice Spirits.
+            if self.cnt in (10,35,60):
+                myPos = getPos(self,0.1,0.2) if self.direction=="left" else getPos(self,0.9,0.2)
+                spirit = IceSpirit(self.xRange, myPos[1], self.onlayer)
+                spirit.coin = 0
+                spirit.rect.left = myPos[0]-spirit.rect.width//2
+                return spirit
         return None
     
     def makeSnowball(self, sprites):
@@ -3613,17 +3902,11 @@ class FrostTitan(Boss):
         snowball = SnowBall( myPos, tgt.onlayer-1, (spdX, spdY) )
         return snowball
     
-    def paint(self, screen):
-        # draw shadow
-        shadRect = self.rect.copy()
-        shadRect.left -= 12
-        screen.blit(self.shad, shadRect)
-        # draw self
-        screen.blit( self.image, self.rect )
-        # Hit highlight
-        if self.hitBack:
-            screen.blit( self.shad, self.rect )
-    
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("body",0)
+        self.coolDown = 0    # count for attack coolDown
+
     def shift(self, final_x, final_y):
         x = self.rect.left + self.rect.width/2
         y = self.rect.top + self.rect.height/2
@@ -3724,9 +4007,10 @@ class SnowBall(pygame.sprite.Sprite):
     def level(self, dist):
         self.rect.left += dist
     
-# ==========================================================================
-# --------------------------------- stage6 ---------------------------------
-# ==========================================================================
+
+# ========================================================================
+# --------------------------------- CP 6 ---------------------------------
+# ========================================================================
 class Dwarf(Monster):
     imgLib = None
     shadLib = None
@@ -3744,38 +4028,37 @@ class Dwarf(Monster):
         Monster.__init__(self, "dwarf", (255,0,0,240), 5, 1, onlayer, sideGroup)
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
-        self.imgIndx = 0
-        self.attIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left+wall.rect.width//2-self.rect.width//2
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
         self.alterSpeed( choice( [-1, 0, 1] ) )
         self.status = "wandering"          # wandering表示闲逛的状态，alarming表示发现英雄的状态
-        self.tgt = None                    # 指示要攻击的英雄
 
-    # 这个move()函数是供外界调动的接口，这里仅起根据传入的英雄参数判断状态的作用。判断完成后，修改自身的状态，然后执行相应的函数。
+    # move()-供外界调动的接口，这里仅起根据传入的英雄参数判断状态的作用。判断完成后，修改自身的状态，然后执行相应的函数。
     def move(self, delay, sprites):
-        for hero in sprites:
-            # 如果有英雄在同一层，则将速度改为朝英雄方向。(这里的两套体系，英雄的层数为偶数，而怪物用的层数都是奇数)
-            if (hero.onlayer-1)==self.onlayer and ( self.scope[0]<=getPos(hero,1,0.5)[0] ) and ( getPos(hero,0,0.5)[0]<=self.scope[1] ):
-                self.status = "alarming"
-                self.tgt = hero
-                break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。问题留着以后修正。
-            else:
-                self.status = "wandering"
-        if self.status == "wandering":
-            self.wander( delay )
-        elif self.status == "alarming":
-            if getPos( self.tgt, 0.5, 0.5 )[0]>getPos( self, 0.5, 0.5 )[0]:
-                self.alterSpeed(1)
-            else:
-                self.alterSpeed(-1)
-            self.attack( sprites )
-        self.checkImg(delay)
         self.checkHitBack(obstacle=True)
+        self.count_stun()
+
+        if self.stun_time==0:
+            for hero in sprites:
+                # 如果有英雄在同一层，则将速度改为朝英雄方向。(两套体系：英雄的层数为偶数，而怪物用的层数都是奇数)
+                if (hero.onlayer-1)==self.onlayer and ( self.scope[0]<=getPos(hero,1,0.5)[0] ) and ( getPos(hero,0,0.5)[0]<=self.scope[1] ):
+                    self.status = "alarming"
+                    self.tgt = hero
+                    break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，P2永远不会被选中为目标。问题留着以后修正。
+                else:
+                    self.status = "wandering"
+            if self.status == "wandering":
+                self.wander( delay )
+            elif self.status == "alarming":
+                if getPos( self.tgt, 0.5, 0.5 )[0]>getPos( self, 0.5, 0.5 )[0]:
+                    self.alterSpeed(1)
+                else:
+                    self.alterSpeed(-1)
+                self.attack( sprites )
+            self.checkImg(delay)
 
     def checkImg(self, delay):
         trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
@@ -3811,6 +4094,12 @@ class Dwarf(Monster):
             if ( self.coolDown == 38 ):
                 cldList( self, sprites )
 
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0
+        self.tgt = None                    # 指示要攻击的英雄
+
     def level(self, dist):
         self.rect.left += dist
         self.scope = (self.scope[0]+dist, self.scope[1]+dist)
@@ -3831,18 +4120,15 @@ class Gunner(Monster):
             Gunner.fireSnd = pygame.mixer.Sound("audio/gunner.wav")
         
         # calculate its position
-        Monster.__init__(self, "gunner", (20,20,20,240), 0, 2, onlayer, sideGroup)
+        Monster.__init__(self, "gunner", (20,20,20,240), 0, 2, onlayer, sideGroup, debri=("metalDebri",6))
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
-        self.imgIndx = 0
-        self.attIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left+wall.rect.width//2-self.rect.width//2
         self.rect.bottom = wall.rect.top
         self.eyePos = getPos(self, 0.5, 0.2)
-        self.coolDown = 0
         self.snd = pygame.mixer.Sound("audio/wolf.wav")
         self.insp = self.inspRange = 360   # inspRange是原始参数，insp是不断变化的参数
         self.alterSpeed( choice( [-1, 1] ) )
@@ -3852,31 +4138,34 @@ class Gunner(Monster):
     # 这个move()函数是供外界调动的接口，这里仅起根据传入的英雄参数判断状态的作用。判断完成后，修改自身的状态，然后执行相应的函数。
     def move(self, delay, sprites, screen):
         self.checkHitBack(obstacle=True)
-        for hero in sprites:
-            # 如果有英雄在同一层，则将速度改为朝英雄方向。(这里的两套体系，英雄的层数为偶数，而怪物用的层数都是奇数)
-            if self.coolDown>0 or \
-                ( hero.rect.top<=self.eyePos[1]<=hero.rect.bottom and ( (self.direction=="left" and self.eyePos[0]+self.insp<=getPos(hero,0.5,0.5)[0]<=self.eyePos[0]) or (self.direction=="right" and self.eyePos[0]<=getPos(hero,0.5,0.5)[0]<=self.eyePos[0]+self.insp) ) ):
-                self.status = "alarming"
-                break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。问题留着以后修正。
-            else:
-                self.status = "wandering"
-        if self.status == "wandering":
-            self.patrol( delay )
-        elif self.status == "alarming" or self.coolDown>0:
-            self.speed = 0
-            self.fire()
-        # renew the image of the gunner; if its speed = 0, do not change image
-        trPos = [ self.rect.left+self.rect.width//2, self.rect.bottom ]
-        self.setImg("iList",self.imgIndx)
-        if self.speed and not (delay % 5 ):
-            self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-        elif 86>=self.coolDown>=83 or 81>=self.coolDown>=78 or 76>=self.coolDown>=73:
-            self.setImg("fire")
-        self.rect = self.image.get_rect()
-        self.rect.left = trPos[0]-self.rect.width//2
-        self.rect.bottom = trPos[1]
+        self.count_stun()
+        if self.stun_time==0:
+            for hero in sprites:
+                # 如果有英雄在同一层，则将速度改为朝英雄方向。(这里的两套体系，英雄的层数为偶数，而怪物用的层数都是奇数)
+                if self.coolDown>0 or \
+                    ( hero.rect.top<=self.eyePos[1]<=hero.rect.bottom and ( (self.direction=="left" and self.eyePos[0]+self.insp<=getPos(hero,0.5,0.5)[0]<=self.eyePos[0]) or (self.direction=="right" and self.eyePos[0]<=getPos(hero,0.5,0.5)[0]<=self.eyePos[0]+self.insp) ) ):
+                    self.status = "alarming"
+                    break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。问题留着以后修正。
+                else:
+                    self.status = "wandering"
+            if self.status == "wandering":
+                self.patrol( delay )
+            elif self.status == "alarming" or self.coolDown>0:
+                self.speed = 0
+                self.fire()
+            # renew the image of the gunner; if its speed = 0, do not change image
+            trPos = [ self.rect.left+self.rect.width//2, self.rect.bottom ]
+            self.setImg("iList",self.imgIndx)
+            if self.speed and not (delay % 5 ):
+                self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+            elif 86>=self.coolDown>=83 or 81>=self.coolDown>=78 or 76>=self.coolDown>=73:
+                self.setImg("fire")
+            self.rect = self.image.get_rect()
+            self.rect.left = trPos[0]-self.rect.width//2
+            self.rect.bottom = trPos[1]
+        # inspecting line
         self.eyePos = getPos(self, 0.5, 0.2)
-        pygame.draw.line( screen, (255,0,0), self.eyePos, (self.eyePos[0]+self.insp,self.eyePos[1]), choice([1,2]) )  # inspecting line
+        pygame.draw.line( screen, (255,0,0), self.eyePos, (self.eyePos[0]+self.insp,self.eyePos[1]), choice([1,2]) )
 
     def patrol(self, delay):
         if (self.speed):                        # speed!=0，在运动。
@@ -3906,16 +4195,10 @@ class Gunner(Monster):
             self.direction = "left"
             self.insp = -self.inspRange
     
-    def hitted(self, damage, pushed, dmgType):
-        if pushed>0:   # 向右击退
-            self.hitBack = max( pushed-self.weight, 0 )
-        elif pushed<0: # 向左击退
-            self.hitBack = min( pushed+self.weight, 0 )
-        self.health -= damage
-        if self.health <= 0:
-            self.spurtCanvas.addPebbles(self, 6, type="metalDebri")
-            self.kill()
-            return True
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0
     
     def level(self, dist):
         self.rect.left += dist
@@ -3992,8 +4275,8 @@ class Lasercraft(Monster):
             Lasercraft.sparkySnd = pygame.mixer.Sound("audio/sparky.wav")
 
         # initialize the sprite
-        Monster.__init__(self, "lasercraft", (110,250,10,240), 6, 1, onlayer)
-        self.imgIndx = 0
+        Monster.__init__(self, "lasercraft", (110,250,10,240), 6, 1, onlayer, debri=("metalDebri",6))
+        
         self.alterSpeed( choice([-1, 1]) )
         if self.direction == "left":
             self.align = align[1]
@@ -4001,7 +4284,7 @@ class Lasercraft(Monster):
         else:
             self.align = align[0]
             self.limitX = align[1]
-        self.setImg("iList",0)
+        self.reset()
         # calculate its position
         self.rect = self.image.get_rect()
         self.mask = pygame.mask.from_surface(self.image)
@@ -4011,16 +4294,15 @@ class Lasercraft(Monster):
             self.muzzle = getPos(self, 0.12, 0.65)  # 发射时的炮口坐标
         else:
             self.muzzle = getPos(self, 0.88, 0.65)
-        self.cnt = 0         # count for the loop of shift position
-        self.coolDown = 160  # count for attack coolDown
-        self.nxt = self.rect.top+self.rect.height//2         # 下一个悬停处的竖坐标
-        self.chargeList = [] # 用于存放电磁炮蓄力充能时的充能粒子信息       
+        self.nxt = self.rect.top+self.rect.height//2         # 下一个悬停处的竖坐标      
 
     def move(self, delay, sprites, maxLayer):
         if not self.checkHitBack():
             gap = self.align - (self.rect.left+self.rect.width//2)
             if gap:
                 self.rect.left = self.rect.left + gap//2
+        self.count_stun()
+
         if not ( delay% 4):
             trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom - self.rect.height//2 ]
             self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
@@ -4028,35 +4310,36 @@ class Lasercraft(Monster):
             self.rect = self.image.get_rect()
             self.rect.left = trPos[0]-self.rect.width//2
             self.rect.bottom = trPos[1]+self.rect.height//2
-        # charging motion
-        if not (delay % 3):
-            self.shift( self.nxt )
-            self.cnt -= 1
-            # find new position
-            if self.cnt <= 0:
-                self.cnt = randint(80,120)
-                tgt = choice(sprites)
-                if tgt.onlayer > 2 and tgt.onlayer < maxLayer:
-                    self.nxt = tgt.rect.top + tgt.rect.height//2
-        # 某科学的电磁炮，发射！
-        if self.coolDown==40:
-            self.chargeList.clear()
-            self.sparkySnd.play(0)
-        elif 15 < self.coolDown < 40:  # 蓄力充能阶段
-            if random()<0.4:           # 添加新粒子
-                r = choice( [2,3,4] )
-                XRange = list( range(self.muzzle[0]-50,self.muzzle[0]-30) ) + list( range(self.muzzle[0]+30,self.muzzle[0]+50) )
-                YRange = list( range(self.muzzle[1]-50,self.muzzle[1]-30) ) + list( range(self.muzzle[1]+30,self.muzzle[1]+50) )
-                pos = [ choice( XRange ), choice( YRange ) ]
-                color = choice( [(240,240,255,240),(170,170,255,240),(110,110,250,240)] )
-                self.chargeList.append( (r, pos, color) ) 
-        elif self.coolDown<15:
-            for each in sprites:
-                if ( ( self.direction=="right" and getPos(each,0.5,0.5)[0]>self.muzzle[0] ) or ( self.direction=="left" and getPos(each,0.5,0.5)[0]<self.muzzle[0] ) ) and (each.rect.top < self.muzzle[1] < each.rect.bottom): # 被激光击中！！！
-                    each.hitted( self.damage, self.push, MB["lasercraft"].dmgType )
-            if (self.coolDown <= 0):
-                self.coolDown = randint(160,240)
-        self.coolDown -= 1
+        if self.stun_time==0:
+            # charging motion
+            if not (delay % 3):
+                self.shift( self.nxt )
+                self.cnt -= 1
+                # find new position
+                if self.cnt <= 0:
+                    self.cnt = randint(80,120)
+                    tgt = choice(sprites)
+                    if tgt.onlayer > 2 and tgt.onlayer < maxLayer:
+                        self.nxt = tgt.rect.top + tgt.rect.height//2
+            # 某科学的电磁炮，发射！
+            if self.coolDown==40:
+                self.chargeList.clear()
+                self.sparkySnd.play(0)
+            elif 15 < self.coolDown < 40:  # 蓄力充能阶段
+                if random()<0.4:           # 添加新粒子
+                    r = choice( [2,3,4] )
+                    XRange = list( range(self.muzzle[0]-50,self.muzzle[0]-30) ) + list( range(self.muzzle[0]+30,self.muzzle[0]+50) )
+                    YRange = list( range(self.muzzle[1]-50,self.muzzle[1]-30) ) + list( range(self.muzzle[1]+30,self.muzzle[1]+50) )
+                    pos = [ choice( XRange ), choice( YRange ) ]
+                    color = choice( [(240,240,255,240),(170,170,255,240),(110,110,250,240)] )
+                    self.chargeList.append( (r, pos, color) ) 
+            elif self.coolDown<15:
+                for each in sprites:
+                    if ( ( self.direction=="right" and getPos(each,0.5,0.5)[0]>self.muzzle[0] ) or ( self.direction=="left" and getPos(each,0.5,0.5)[0]<self.muzzle[0] ) ) and (each.rect.top < self.muzzle[1] < each.rect.bottom): # 被激光击中！！！
+                        each.hitted( self.damage, self.push, MB["lasercraft"].dmgType )
+                if (self.coolDown <= 0):
+                    self.coolDown = randint(160,240)
+            self.coolDown -= 1
 
     def shift(self, final_y):
         y = self.rect.top + self.rect.height/2
@@ -4074,7 +4357,7 @@ class Lasercraft(Monster):
     def paint(self, surface):
         # 画阴影
         shadRect = self.rect.copy()
-        shadRect.left -= 8
+        shadRect.left -= self.shadOffset
         surface.blit(self.shad, shadRect)
         surface.blit(self.image, self.rect)
         # 画打击阴影
@@ -4089,18 +4372,14 @@ class Lasercraft(Monster):
             else:
                 pygame.draw.line( surface, (120,120,250), self.muzzle, (self.limitX,self.muzzle[1]), choice([4,6,8]))   # 开炮！！
             pygame.draw.circle( surface, (120,120,250), self.muzzle, randint(14,20) )   #聚能中心
-
-    def hitted(self, damage, pushed, dmgType):
-        if pushed>0:   # 向右击退
-            self.hitBack = max( pushed-self.weight, 0 )
-        elif pushed<0: # 向左击退
-            self.hitBack = min( pushed+self.weight, 0 )
-        self.health -= damage
-        if self.health <= 0:
-            self.spurtCanvas.addPebbles(self, 6, type="metalDebri")
-            self.kill()
-            return True
     
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.cnt = 0         # count for the loop of shift position
+        self.coolDown = 160  # count for attack coolDown
+        self.chargeList = [] # 用于存放电磁炮蓄力充能时的充能粒子信息 
+
     def level(self, dist):
         self.rect.left += dist
         self.align += dist
@@ -4112,7 +4391,7 @@ class Lasercraft(Monster):
         self.nxt += dist
         self.muzzle[1] += dist
 
-# ------------------------------------
+# Boss ------------------------------
 class WarMachine(Boss):
     arm = None        # 是一个单独的sprite
     packet = None
@@ -4120,7 +4399,6 @@ class WarMachine(Boss):
     def __init__(self, groupList, onlayer, font):
         # initialize the sprite
         Boss.__init__(self, font, "WarMachine", (10,30,10,240), 6, 4, onlayer)
-        self.onlayer = int(onlayer)
         self.initLayer(groupList)
         # ----- body part (the core of the WarMachine) ------
         self.imgLib = {
@@ -4221,6 +4499,9 @@ class WarMachine(Boss):
                 self.fireSnd.play(0)
                 return Fire( getPos(self.packet,0.5,0), self.onlayer, randint(-3,3), randint(-6,-4))
 
+    def stun(self, duration):
+        pass
+
     def lift(self, dist):
         self.rect.bottom += dist
         self.initPos[1] += dist
@@ -4285,6 +4566,7 @@ class Missle(InanimSprite):
         self.health = MB["missle"].health
         self.dmgType = MB["missle"].dmgType
         self.coin = MB["missle"].coin
+        self.manner = MB["missle"].manner
         self.tgt = tgt
         if not self.tgt:     # no tgt，直接boom
             self.health = 0
@@ -4340,6 +4622,9 @@ class Missle(InanimSprite):
     def drawHealth(self, surface):
         pass
 
+    def stun(self, duration):
+        pass
+
     def hitted(self, damage, pushed, dmgType):
         self.health -= damage
 
@@ -4349,9 +4634,104 @@ class Missle(InanimSprite):
         surface.blit( generateShadow(self.image), shadRect )'''
         surface.blit( self.image, self.rect )
 
-# ==========================================================================
-# --------------------------------- stage7 ---------------------------------
-# ==========================================================================
+class Drip(InanimSprite):
+    oriImg = {"left":None, "right":None}
+    fullSpd = 11
+    blastSnd = None
+    launchSnd = None
+
+    def __init__(self, pos, direction, tgt=None):
+        if not Drip.oriImg["left"]:
+            Drip.oriImg = { "left": load("image/stg6/drip.png").convert_alpha(),
+                "right":flip(load("image/stg6/drip.png").convert_alpha(), True, False) }
+            Drip.blastSnd = pygame.mixer.Sound("audio/wizard/hit.wav")
+            Drip.launchSnd = pygame.mixer.Sound("audio/missle.wav")
+
+        InanimSprite.__init__(self, "drip")
+        #self.launchSnd.play(0)
+        if direction=="right":      # 为方便角度计算，以x向右为正方向、y向上为正方向
+            self.speed = [self.fullSpd, 0]
+            self.push = 6
+        else:
+            self.speed = [-self.fullSpd, 0]
+            self.push = -6
+        self.image = self.oriImg[direction]
+        self.rect = self.image.get_rect()
+        self.rect.left = pos[0]-self.rect.width//2
+        self.rect.top = pos[1]-self.rect.height//2
+        self.mask = pygame.mask.from_surface(self.image)
+        self.damage = NB["drip"]["damage"]
+        self.health = NB["drip"]["health"]
+        self.dmgType = "physical"
+        self.coin = 0
+        self.manner = NB["drip"]["manner"]
+        self.bldColor = (40,10,10,240)
+        self.active = False
+
+    def update(self, delay, monsters, heroes, canvas):
+        if self.active:
+            if self.speed[0]>0:
+                canvas.addTrails( [5], [12], (240,210,150,240), getPos(self,0.1,0.5) )
+            elif self.speed[0]<0:
+                canvas.addTrails( [5], [12], (240,210,150,240), getPos(self,0.9,0.5) )
+            # adjust speed
+            if not delay%8:
+                my_ctr = getPos(self,0.5,0.5)
+                if ( self.speed[0]>0 and my_ctr[0]>=canvas.rect.width+100 ) or ( self.speed[0]<0 and my_ctr[0]<=-100 ):
+                    # lift one layer
+                    self.rect.top -= 144
+                    if self.rect.bottom<0:
+                        self.kill()
+                        return
+                    self.speed[0] = -self.speed[0]
+                    self.push = -self.push
+                    if self.speed[0]>0:
+                        self.image = self.oriImg["right"]
+                    elif self.speed[0]<0:
+                        self.image = self.oriImg["left"]
+                        self.mask = pygame.mask.from_surface(self.image)
+                #tgt_ctr = getPos(self.tgt,0.5,0.5)
+                # if my_ctr[0]>tgt_ctr[0] and self.speed[0]>-self.fullSpd:
+                #     self.speed[0] -= 1
+                # elif my_ctr[0]<tgt_ctr[0] and self.speed[0]<self.fullSpd:
+                #     self.speed[0] += 1
+                # if my_ctr[1]>tgt_ctr[1] and self.speed[1]>-self.fullSpd:
+                #     self.speed[1] -= 1
+                # elif my_ctr[1]<tgt_ctr[0] and self.speed[1]<self.fullSpd:
+                #     self.speed[1] += 1
+            # move the object
+            self.rect.left += self.speed[0]
+            #self.rect.top += self.speed[1]
+            # deal damage to all life
+            if not delay%2:
+                for group in [monsters, heroes]:
+                    for each in group:
+                        if each!=self and collide_mask( self, each ):
+                            each.hitted( self.damage, self.push, self.dmgType )
+                            self.blastSnd.play(0)
+
+    def drawHealth(self, surface):
+        pass
+
+    def stun(self, duration):
+        pass
+
+    def hitted(self, damage, pushed, dmgType):
+        if not self.active:
+            self.active = True
+            self.launchSnd.play(0)
+        #self.health -= damage
+
+    def paint(self, surface):
+        '''shadRect = self.rect.copy()
+        shadRect.left -= 8
+        surface.blit( generateShadow(self.image), shadRect )'''
+        surface.blit( self.image, self.rect )
+
+
+# ========================================================================
+# --------------------------------- CP 7 ---------------------------------
+# ========================================================================
 class Log(InanimSprite):
     fullSpd = 7
 
@@ -4428,16 +4808,13 @@ class Guard(Monster):
         Monster.__init__(self, "guard", (255,0,0,240), 6, 1, onlayer, sideGroup)
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left+wall.rect.width//2-self.rect.width//2
         self.rect.bottom = wall.rect.top
-        self.coolDown = 0
         self.alterSpeed( choice([-1,0,1]) )   # 0表示原地不动，负数表示向左移动，正数表示向右移动
         self.status = "wandering"          # wandering表示闲逛的状态，alarming表示发现英雄的状态
-        self.tgt = None                    # 指示要攻击的英雄
         # Define shield.
         self.shieldR = { "left":(0.2,0.62), "right":(0.8,0.62) }
         self.shieldImg = createImgList( "image/stg7/shield.png" )
@@ -4451,20 +4828,23 @@ class Guard(Monster):
 
     # 这个move()函数是供外界调动的接口，这里仅起根据传入的英雄参数判断状态的作用。判断完成后，修改自身的状态，然后执行相应的函数。
     def move(self, delay, sprites):
-        for hero in sprites:
-            # 如果有英雄在同一层，则将速度改为朝英雄方向。(这里的两套体系，英雄的层数为偶数，而怪物用的层数都是奇数)
-            if ( (hero.onlayer-1)==self.onlayer and ( self.scope[0]<=getPos(hero,1,0.5)[0] ) and ( getPos(hero,0,0.5)[0]<=self.scope[1] ) ) or self.coolDown>0:
-                self.status = "alarming"
-                self.tgt = hero
-                break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。问题留着以后修正。
-            else:
-                self.status = "wandering"
-        if self.status == "wandering":
-            self.wander( delay )
-        elif self.status == "alarming":
-            self.attack( sprites )
-        self.checkImg(delay)
         self.checkHitBack(obstacle=True)
+        self.count_stun()
+
+        if self.stun_time==0:
+            for hero in sprites:
+                # 如果有英雄在同一层，则将速度改为朝英雄方向。(这里的两套体系，英雄的层数为偶数，而怪物用的层数都是奇数)
+                if ( (hero.onlayer-1)==self.onlayer and ( self.scope[0]<=getPos(hero,1,0.5)[0] ) and ( getPos(hero,0,0.5)[0]<=self.scope[1] ) ) or self.coolDown>0:
+                    self.status = "alarming"
+                    self.tgt = hero
+                    break     # ***这里碰到第一个英雄符合条件就退出了。因此，如果两个英雄同时在一层中，P1总是会被针对，而P2永远不会被选中为目标。问题留着以后修正。
+                else:
+                    self.status = "wandering"
+            if self.status == "wandering":
+                self.wander( delay )
+            elif self.status == "alarming":
+                self.attack( sprites )
+        self.checkImg(delay)
 
     def checkImg(self, delay):
         trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom ]
@@ -4519,10 +4899,16 @@ class Guard(Monster):
                     if collide_mask(self.spear, each):
                         cldList( self, sprites )
     
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 0
+        self.tgt = None         # 指示要攻击的英雄
+
     def paint(self, screen):
         # 画阴影
         shadRect = self.rect.copy()
-        shadRect.left -= 8
+        shadRect.left -= self.shadOffset
         screen.blit(self.shad, shadRect)
         screen.blit( self.spear.image, self.spear.rect )
         screen.blit( self.image, self.rect )
@@ -4545,8 +4931,9 @@ class Guard(Monster):
         self.bldColor = (255,0,0,240)
         if ( pushed<0 and self.direction=="right" ) or ( pushed>0 and self.direction=="left"):
             self.bldColor = (200,200,200,240)
-            damage *= (1-self.armor)        # 原来的20%
-        self.health -= max(damage,1)
+            damage = round(damage*self.realDmgRate)       # 原来的20%
+        self.health -= damage
+        self.msgList.append( [getPos(self,0.5,0.5), str(damage), 60] )
         if self.health <= 0:       # dead
             self.health = 0
             self.kill()
@@ -4571,61 +4958,67 @@ class Flamen(Monster):
         Monster.__init__(self, "flamen", (255,0,0,240), 0, 1, onlayer, sideGroup)
         wall = self.initLayer(wallGroup, sideGroup)
         # initialize the sprite
-        self.imgIndx = 0
-        self.setImg("iList",0)
+        self.reset()
         self.mask = pygame.mask.from_surface(self.image)
         self.rect = self.image.get_rect()
         self.rect.left = wall.rect.left+wall.rect.width//2-self.rect.width//2
         self.rect.bottom = wall.rect.top-10
-        self.coolDown = 300
         self.alterSpeed( choice([-1,0,1]) )   # 0表示原地不动，负数表示向左移动，正数表示向右移动
-        self.tgt = None                       # 指示要攻击的英雄
-        self.ctr = [0,0]
-        self.chargeList = []
         self.upDown = 2               # 悬停状态身体上下振幅
 
     # 这个move()函数是供外界调动的接口，这里仅起根据传入的英雄参数判断状态的作用。判断完成后，修改自身的状态，然后执行相应的函数。
     def move(self, delay, sprites):
+        self.checkHitBack(obstacle=True)
+        self.count_stun()
+
         if not (delay % 24):
             self.rect.top += self.upDown
             self.upDown = -self.upDown
-        self.coolDown -= 1
-        # renew the image of the flamen
-        trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom - self.rect.height//2 ]
-        if self.coolDown>100:
-            if not (delay % 20 ):
-                self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
-            self.setImg("iList",self.imgIndx)
-        elif self.coolDown==100 or self.coolDown==10:
-            self.setImg("attList",0)
-        elif self.coolDown==90:
-            self.setImg("attList", 1)
-        self.rect = self.image.get_rect()
-        self.rect.left = trPos[0]-self.rect.width//2
-        self.rect.bottom = trPos[1]+self.rect.height//2
-        self.checkHitBack(obstacle=True)
+        if self.stun_time==0:
+            self.coolDown -= 1
+            # renew the image of the flamen
+            trPos = [ self.rect.left + self.rect.width//2, self.rect.bottom - self.rect.height//2 ]
+            if self.coolDown>100:
+                if not (delay % 20 ):
+                    self.imgIndx = (self.imgIndx+1) % len(self.imgLib["iList"]["left"])
+                self.setImg("iList",self.imgIndx)
+            elif self.coolDown==100 or self.coolDown==10:
+                self.setImg("attList",0)
+            elif self.coolDown==90:
+                self.setImg("attList", 1)
+            self.rect = self.image.get_rect()
+            self.rect.left = trPos[0]-self.rect.width//2
+            self.rect.bottom = trPos[1]+self.rect.height//2
 
-        if self.coolDown<=0:
-            self.chargeList.clear()
-            self.coolDown = randint(300,720)
-        elif self.coolDown>100:                       # 根据coolDown决定标记英雄进行攻击或游荡。
-            if (self.speed):                          # speed!=0，在运动。
-                if not (delay%2):
-                    self.rect.left += self.speed
-                    if (getPos(self, 0.7, 1)[0] >= self.scope[1] and self.speed > 0) or (getPos(self, 0.3, 1)[0] <= self.scope[0] and self.speed < 0):
-                        self.alterSpeed( -self.speed )
-                if not delay % 20 and random()<0.08:  # 随机进入休息状态。
-                    self.alterSpeed( 0 )
-                    self.direction = "left" if random()<0.5 else "right"
-            elif not delay % 20 and random()<0.08:    # 否则，在休息。此时若随机数满足条件，进入游荡状态
-                self.alterSpeed( choice( [1,-1] ) ) 
-        elif self.coolDown==100:
-            self.tgt = choice(sprites)
-            self.ctr = getPos(self.tgt, 0.5, -1)
-            self.snd.play(0)
-            self.alterSpeed(0)
-            return SoulBlast(self.ctr, self.tgt.onlayer-1, 60)
+            if self.coolDown<=0:
+                self.chargeList.clear()
+                self.coolDown = randint(300,660)
+            elif self.coolDown>100:                       # 根据coolDown决定标记英雄进行攻击或游荡。
+                if (self.speed):                          # speed!=0，在运动。
+                    if not (delay%2):
+                        self.rect.left += self.speed
+                        if (getPos(self, 0.7, 1)[0] >= self.scope[1] and self.speed > 0) or (getPos(self, 0.3, 1)[0] <= self.scope[0] and self.speed < 0):
+                            self.alterSpeed( -self.speed )
+                    if not delay % 20 and random()<0.08:  # 随机进入休息状态。
+                        self.alterSpeed( 0 )
+                        self.direction = "left" if random()<0.5 else "right"
+                elif not delay % 20 and random()<0.08:    # 否则，在休息。此时若随机数满足条件，进入游荡状态
+                    self.alterSpeed( choice( [1,-1] ) ) 
+            elif self.coolDown==100:
+                self.tgt = choice(sprites)
+                self.ctr = getPos(self.tgt, 0.5, -1)
+                self.snd.play(0)
+                self.alterSpeed(0)
+                return SoulBlast(self.ctr, self.tgt.onlayer-1, 60)
     
+    def reset(self):
+        self.imgIndx = 0
+        self.setImg("iList",0)
+        self.coolDown = 300
+        self.ctr = [0,0]
+        self.tgt = None         # 指示要攻击的英雄
+        self.chargeList = []
+
     def level(self, dist):
         self.rect.left += dist
         self.scope = (self.scope[0]+dist, self.scope[1]+dist)
@@ -4634,17 +5027,6 @@ class Flamen(Monster):
         self.rect.bottom += dist
         self.ctr[1] += dist
     
-    def hitted(self, damage, pushed, dmgType):
-        if pushed>0:   # 向右击退
-            self.hitBack = max( pushed-self.weight, 0 )
-        elif pushed<0: # 向左击退
-            self.hitBack = min( pushed+self.weight, 0 )
-        self.health -= max(damage,1)
-        if self.health <= 0:       # dead
-            self.health = 0
-            self.kill()
-            return True
-
 class SoulBlast(InanimSprite):
     
     def __init__(self, pos, layer, cnt):
@@ -4769,6 +5151,7 @@ class Assassin(Monster):
 
     def move(self, delay, sprites, YRange, spurtCanvas):
         self.checkHitBack(obstacle=True)
+
         self.setImg(self.status)
         if self.status == "wait":
             if len(self.rectList)>0:
@@ -4846,13 +5229,16 @@ class Assassin(Monster):
         self.speed = [0,0]
         self.coolDown = randint(20,120)
         
+    def stun(self, duration):
+        pass
+
     def paint(self, surface):
         # 画残影
         for rect in self.rectList:
             surface.blit(self.shad, rect)
         # 画阴影
         shadRect = self.rect.copy()
-        shadRect.left -= 8
+        shadRect.left -= self.shadOffset
         surface.blit(self.shad, shadRect)
         surface.blit( self.image, self.rect )
         # 画打击阴影
@@ -4863,13 +5249,12 @@ class Assassin(Monster):
         self.rect.left += dist
         self.XRange = (self.XRange[0]+dist, self.XRange[1]+dist)
 
-# -----------------------------------
+# Boss ------------------------------
 class Chicheng(Boss):
 
     def __init__(self, groupList, onlayer, font):
         # initialize the sprite
-        Boss.__init__(self, font, "Chicheng", (255,0,0,240), 6, 4, onlayer)
-        self.onlayer = int(onlayer)
+        Boss.__init__(self, font, "Chicheng", (255,0,0,240), 6, 4, onlayer, shadOffset=12)
         self.initLayer(groupList)
         self.imgLib = {
             "body": createImgList("image/stg7/ccBody.png"),
@@ -4902,14 +5287,14 @@ class Chicheng(Boss):
         self.weapon.push = self.push
         # ----------- other attributes -------------------------
         self.cnt = 300      # count for the loop of shift position
-        self.alarmTime = 0
+        self.reset()
         self.knockCnt = 0
         self.dealt = False
-        self.combo = 0
         self.mockSnd = pygame.mixer.Sound("audio/chichengMock.wav")
         self.knockSnd = pygame.mixer.Sound("audio/chichengKnock.wav")
         self.threatSnd1 = pygame.mixer.Sound("audio/ccSilent.wav")
         self.jumping = False
+        self.max_spd = 6
         # ---------- silent particle --------------------------
         # [pos, speed, tgtRect, tgthero]
         self.parti = None
@@ -4917,6 +5302,8 @@ class Chicheng(Boss):
     def move(self, sprites, canvas, groupList, knock, GRAVITY):
         self.checkHitBack()
         self._tipPosition(canvas)
+        self.count_stun()
+
         # when knockcnt>0, dealing damage
         if self.knockCnt>0:
             self.knockCnt -= 1
@@ -4942,17 +5329,18 @@ class Chicheng(Boss):
             else:       # 落地完成,正常态
                 self.setImg("body")
                 self.weaponIndx = 0
-                # Randomly implement silent paritcle
-                if not self.parti and not self.cnt%5 and random()<0.05:
-                    self.threatSnd1.play(0)
-                    tgts = [hero for hero in sprites if hero.category=="hero"]
-                    tgt_hero = choice(tgts)
-                    rect = tgt_hero.slot.slotDic["brand"][1]
-                    startPos = getPos(self,0.5,0.5)
-                    finalPos = [rect.left+rect.width//2, rect.top+rect.height//2]
-                    speedX = round( (finalPos[0] - startPos[0]) / 40 )
-                    speedY = round( (finalPos[1] - startPos[1]) / 40 )
-                    self.parti = [startPos, (speedX, speedY), rect, tgt_hero]
+                if self.stun_time==0:
+                    # Randomly implement silent paritcle
+                    if not self.parti and not self.cnt%5 and random()<0.05:
+                        self.threatSnd1.play(0)
+                        tgts = [hero for hero in sprites if hero.category=="hero"]
+                        tgt_hero = choice(tgts)
+                        rect = tgt_hero.slot.slotDic["brand"][1]
+                        startPos = getPos(self,0.5,0.5)
+                        finalPos = [rect.left+rect.width//2, rect.top+rect.height//2]
+                        speedX = round( (finalPos[0] - startPos[0]) / 40 )
+                        speedY = round( (finalPos[1] - startPos[1]) / 40 )
+                        self.parti = [startPos, (speedX, speedY), rect, tgt_hero]
         # about updating images.
         if not (self.cnt % 2):
             # 身体红光
@@ -4978,8 +5366,9 @@ class Chicheng(Boss):
         if self.jumping:
             self.rect.left += self.speed    # Only consider x here. y is acted by fall()
         elif not self.jumping and self.cnt==240:
-            self.takeOff(sprites, groupList, GRAVITY)
-            self.combo = randint(2,4)
+            if self.stun_time==0:
+                self.takeOff(sprites, groupList, GRAVITY)
+                self.combo = randint(2,4)
         # move particle if there is one
         if self.parti:
             pos, speed, rect, hero = self.parti
@@ -4998,18 +5387,25 @@ class Chicheng(Boss):
         tgt = choice(sprites)
         self.jumping = True
         tgtPos, myPos = getPos(tgt,0.5,1), getPos(self,0.5,1)
-        # 目标在下方
+        # 目标在下方或同行
         if tgt.onlayer-1<=self.onlayer:
             self.onlayer = tgt.onlayer-1
             self.gravity = -14
             self.alarmTime = self.estimateTime(14, tgtPos[1]-myPos[1], GRAVITY)
-        # 否则目标在上方或同行
+        # 否则目标在上方
         else:
-            self.onlayer += 2
+            if (str(self.onlayer+2) in groupList):
+                # need to confirm that new layer is in groupList (in case of hero jump to the highest layer)
+                self.onlayer += 2
             self.gravity = -18
             self.alarmTime = self.estimateTime(18, tgtPos[1]-myPos[1], GRAVITY)
         self.initLayer(groupList)
-        self.alterSpeed( round( (tgtPos[0]-myPos[0])/self.alarmTime ) )
+        x_spd = round( (tgtPos[0]-myPos[0])/self.alarmTime )
+        if x_spd<-self.max_spd:
+            x_spd = -self.max_spd
+        elif x_spd>self.max_spd:
+            x_spd = self.max_spd
+        self.alterSpeed( x_spd )
 
     def estimateTime(self, upwardSpd, absVertical, GRAVITY):
         absDistY = 0
@@ -5049,7 +5445,7 @@ class Chicheng(Boss):
             给此函数传递一个surface参数，即可在该surface上绘制（blit）完整的本对象'''
         # 画阴影
         shadRect = self.rect.copy()
-        shadRect.left -= 12
+        shadRect.left -= self.shadOffset
         screen.blit(self.shad, shadRect)
         # 画本身
         screen.blit( self.weapon.image, self.weapon.rect )
@@ -5062,6 +5458,10 @@ class Chicheng(Boss):
         if self.parti:
             pygame.draw.circle(screen, (190,30,30), self.parti[0], randint(6,8))
        
+    def reset(self):
+        self.alarmTime = 0
+        self.combo = 0
+
     def erase(self):
         self.mockSnd.play(0)
         self.weapon.kill()

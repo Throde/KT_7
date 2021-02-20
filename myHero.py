@@ -1,29 +1,26 @@
-# hero module
+"""
+myHero.py:
+Define Hero class, as well as bullets, and superpower managers.
+"""
 import pygame
 # 在myHero模块中，load、flip和collide_mask三个函数使用很频繁，这里导入这两个函数以方便使用（enemy同样）
 from pygame.image import load
 from pygame.transform import flip
 from pygame.sprite import collide_mask
+from random import random, randint, choice
 import math
-from random import *
 
 import enemy
-import mapManager
+from mapElems import ChestContent   # will be used in Javelin class
+from props import *
 from database import GRAVITY, DMG_FREQ, RANGE
 from util import InanimSprite, HPBar
-from util import getPos, rot_center, generateShadow
+from util import getPos, rot_center, generateShadow, getCld
 
 
-def getCld(core, group, cateList):
-    '''Assistant function for many of hero's movement check'''
-    spriteList = []
-    cldList = pygame.sprite.spritecollide(core, group, False, collide_mask)
-    for item in cldList:
-        if item.category in cateList:
-            spriteList.append(item)
-    return spriteList
-
-# =========================================
+# ==========================================================
+# ====================== Hero Object =======================
+# ==========================================================
 class Hero(InanimSprite):
 
     # some properties of hero
@@ -46,8 +43,6 @@ class Hero(InanimSprite):
 
     k1 = 0            # 一阶跳的标志
     k2 = 0            # 二阶跳的标志
-    kNum = 13         # 单阶段跳跃的计算总次数（从离地到抵达最高点的次数，单向上升过程）
-    jmpCap = 0        # 单次跳跃的上升距离，将在初始化时计算得出
     aground = True    # indicate whether hero is on the ground
     gravity = 1
     shootCnt = 0      # 射击时更换图片过程的计数
@@ -78,7 +73,7 @@ class Hero(InanimSprite):
     lgg = 0
     onlayer = 0        # indicate which layer hero is. only can be even number
 
-    # Storage Information: 以下是hero的库信息部分，保存易被修改的hero的原始信息。
+    # Img Buffer: 以下是hero的库信息部分，保存易被修改的hero的原始信息。
     # 这部分在__init__时设置完成后，不允许再被修改。当需要恢复被改变的属性时，可以从这里读取恢复。
     oriSpd = 3           # 指示hero正常的移动速度
     oriImgLeftList = []  # hero的行走图片列表
@@ -92,141 +87,118 @@ class Hero(InanimSprite):
     oriWpJumpRight = None
 
     # constructor of hero
-    def __init__(self, VHero, dmgReduction, font, lgg, keyDic=None):
-        InanimSprite.__init__(self, "hero")
+    def __init__(self, VHero, dmgReduction, font, lgg, keyDic=None, cate="hero"):
+        InanimSprite.__init__(self, cate)
         self.status = "left"
         self.imgIndx = 0
-        self.kNum = 13
-        self.interactiveList = ["chest","specialWall","hostage","door","exit","notice","merchant"]
+        self.kNum = 13      # 单阶段跳跃的计算总次数（从离地到抵达最高点的次数，单向上升过程）
+        self.speed = 3
+        self.imgSwt = 8
+        self.interactiveList = ["chest","specialWall","hostage","door","exit","merchant"]
 
+        self.superPowerFull = 3200  # 超级技能充满所需值
         if VHero.no == 0:
             self.name = "knight"
             self.push = 7
             self.weight = 2
-            self.speed = 3
-            self.bagpack = Bagpack( ("arrow","箭矢") )
             self.talkDic = { "ammoOut":("Arrow's running out.","弓箭用完了。"), "shoot":("Watch out!","看箭！"),
-                "hitted":("Ouch!","呃啊！"), "wait":("Next step...","下一步应该……"),
-                "follower":("",""), "trainer":("Very honored to practice with you!","很荣幸和你一起练习！") }
+                "fullCharge":("Ready to wreck!","准备毁灭！"), "underCharge":("Still need to charge...","还需要充能……"), 
+                "hitted":("Ouch!","呃啊！"), "wait":("Next step...","下一步应该……"), "follower":("","") }
             # 只保留left方向下的位置数据，根据hero的状态进行区分。right方向下，保持第二项不变，第一项用1去减即可。第三项只可取0或1。
             self.oriWeaponR = {"normal":[ (0.68,0.77,1), (0.63,0.75,1), (0.58,0.73,1), (0.63,0.75,1), (0.58,0.73,1) ], 
                 "shoot":[ (0.1,0.62,1), (0.28,0.74,1), (0.5,0.8,1) ], "jump":(0.68,0.68,1), "superPower":(0.53,0.5,1)}
-            self.imgSwt = 8
             self.gender = "Male"
         elif VHero.no == 1:
             self.name = "princess"
             self.push = 6
             self.weight = 1
-            self.speed = 3
-            self.bagpack = Bagpack( ("bullet","炮弹") )
-            self.talkDic = { "ammoOut":("No more powder...","没有火药了……"), "shoot":("Taste this!","尝尝这个！"),
-                "hitted":("Ah!","啊！"), "wait":("I wonder...","我想……"),
-                "follower":("Feel safer with you.","有你在感觉安全多了。"), "trainer":("People call me the prettiest trainer ever.","他们说我是有史以来最漂亮的训练师。") }
+            self.talkDic = { "ammoOut":("No more powder...","没有火药了……"), "shoot":("Taste this!","尝尝这个！"), 
+                "fullCharge":("Lock and load!","炮火已上膛！"), "underCharge":("Why not stay beautiful?","为什么不多漂亮一会儿呢？"), 
+                "hitted":("Ah!","啊！"), "wait":("I wonder...","我想……"), "follower":("Feel safer with you.","有你在感觉安全多了。") }
             self.oriWeaponR = { "normal":[ (0.35,0.72,1), (0.35,0.74,1), (0.35,0.72,1), (0.35,0.74,1), (0.35,0.72,1) ], 
                 "shoot":[ (0.35,0.6,1), (0.35,0.58,1), (0.35,0.58,1) ], "jump":(0.12,0.82,0), "superPower":(0.2,0.65,1)}
-            self.imgSwt = 8
             self.gender = "Female"
         elif VHero.no == 2:
             self.name = "prince"
             self.push = 8
             self.weight = 3
-            self.speed = 3
-            self.bagpack = Bagpack( ("javelin","掷枪") )
-            self.talkDic = { "ammoOut":("I need javelins!.","我需要掷枪！"), "shoot":("Get away!","滚开！"),
-                "hitted":("Errr!","呃！"), "wait":("Pony's tired?","马儿累了吗？"),
-                "follower":("Can you on earth do this?","你到底行不行啊？"), "trainer":("If you dare hurt my lovely pony...","如果你胆敢伤害我的马儿的话……") }
+            self.talkDic = { "ammoOut":("I need javelins!.","我需要掷枪！"), "shoot":("Get away!","滚开！"), 
+                "fullCharge":("Crush them!","碾碎它们！"), "underCharge":("My pony needs a rest.","我的马儿还需要休息。"), 
+                "hitted":("Errr!","呃！"), "wait":("Pony's tired?","马儿累了吗？"), "follower":("Can you on earth do this?","你到底行不行啊？") }
             self.oriWeaponR = {"normal":[ (0.4,0.7,1), (0.42,0.69,1), (0.39,0.68,1), (0.42,0.69,1), (0.39,0.68,1) ], 
                 "shoot":[ (0.39,0.76,1), (0.41,0.72,1), (0.43,0.7,1) ], "jump":(0.64,0.48,1), "superPower":(0.64,0.48,1)}
-            self.imgSwt = 8
             self.kNum += 1
             self.gender = "Male"
         elif VHero.no == 3:
             self.name = "wizard"
             self.push = 6
             self.weight = 2
-            self.speed = 3
-            self.bagpack = Bagpack( ("fire element","火元素") )
-            self.talkDic = { "ammoOut":("Fire don't reply.","火元素无法召出了。"), "shoot":("Burn...","灼烧吧……"),
-                "hitted":("Ouch!","呃啊！"), "wait":("Need to ponder...","需要思考一下……"),
-                "follower":("I'll follow you, kid.","我会紧跟着，孩子。"), "trainer":("Calm down, and feel the nature.","冷静下来，才能感受自然。") }
+            self.talkDic = { "ammoOut":("Fire don't reply.","火元素无法召出了。"), "shoot":("Burn...","灼烧吧……"), 
+                "fullCharge":("I feel the lightning...","我已感受到了雷电……"), "underCharge":("Calm down, and feel the nature.","冷静下来，才能感受自然。"), 
+                "hitted":("Ouch!","呃啊！"), "wait":("Need to ponder...","需要思考一下……"), "follower":("I'll follow you, kid.","我会紧跟着，孩子。") }
             self.oriWeaponR = {"normal":[ (0.09,0.64,0), (0.08,0.62,0), (0.09,0.66,0), (0.1,0.62,0), (0.09,0.66,0) ], 
                 "shoot":[ (0.53,0.64,1), (0.49,0.67,1), (0.44,0.78,0) ], "jump":(0.08,0.64,0), "superPower":(0.5,0.45,1)}
-            self.imgSwt = 6
             self.gender = "Male"
         elif VHero.no == 4:
             self.name = "huntress"
             self.push = 6
             self.weight = 1
-            self.speed = 3
-            self.bagpack = Bagpack( ("dart","飞矢") )
-            self.talkDic = { "ammoOut":("Need a rest!","得休息一下。"), "shoot":("Penetrating!","穿刺一切！"),
-                "hitted":("That hurts!","好痛！"), "wait":("Miss my hound...","想念我的猎犬了……"),
-                "follower":("You are as brave as my hound!","你和我的猎犬一样勇敢！"), "trainer":("I'm good at training dogs, as for you...","我比较擅长训练我的狗，至于你嘛……") }
+            self.talkDic = { "ammoOut":("Need a rest!","得休息一下。"), "shoot":("Penetrating!","穿刺一切！"), 
+                "fullCharge":("Boomerang on the way.","骨镖已就绪。"), "underCharge":("If my dog is here...","要是我的狗狗在这的话……"), 
+                "hitted":("That hurts!","好痛！"), "wait":("Miss my hound...","想念我的猎犬了……"), "follower":("You are as brave as my hound!","你和我的猎犬一样勇敢！") }
             self.oriWeaponR = {"normal":[ (0.7,0.6,0), (0.7,0.6,0), (0.7,0.62,0), (0.7,0.6,0), (0.7,0.62,0) ], 
                 "shoot":[ (0.7,0.6,0), (0.68,0.62,0), (0.66,0.61,0) ], "jump":(0.69,0.64,0), "superPower":(0.53,0.48,0)}
-            self.imgSwt = 6
             self.gender = "Female"
         elif VHero.no == 5:
             self.name = "priest"
             self.push = 6
             self.weight = 1
-            self.speed = 3
-            self.bagpack = Bagpack( ("jade","玉石") )
-            self.talkDic = { "ammoOut":("There's no forever power.","没有力量是永恒的。"), "shoot":("For Holy light!","为了圣光！"),
-                "hitted":("Ahhh!","啊！"), "wait":("God leads me...","上帝会指引我……"),
-                "follower":("Are you the angle from the heaven?","你是天堂来拯救我的天使吗？"), "trainer":("To be stronger, you need to be pious and kind.","想要变强，你需要虔诚和善良。") }
+            self.talkDic = { "ammoOut":("There's no forever power.","没有力量是永恒的。"), "shoot":("For Holy light!","为了圣光！"), 
+                "fullCharge":("The Good is about to arrive.","大善即将到来。"), "underCharge":("It needs time to prove pious and kind.","证明虔诚和善良需要时间。"), 
+                "hitted":("Ahhh!","啊！"), "wait":("God leads me...","上帝会指引我……"), "follower":("Are you the angle from the heaven?","你是来自天堂的天使吗？") }
             self.oriWeaponR = {"normal":[ (0.27,0.82,0), (0.28,0.82,0), (0.36,0.78,0), (0.28,0.82,0), (0.22,0.77,0) ], 
                 "shoot":[ (0.28,0.8,0), (0.22,0.75,0), (0.16,0.64,0) ], "jump":(0.12,0.62,1), "superPower":(0.16,0.64,0)}
-            self.imgSwt = 8
             self.gender = "Female"
         elif VHero.no == 6:
             self.name = "king"
             self.push = 8
             self.weight = 2
-            self.speed = 3
-            self.bagpack = Bagpack( ("shots","散弹") )
-            self.talkDic = { "ammoOut":("Reloading now!","正在填装！"), "shoot":("Power of King!","国王的力量！"),
-                "hitted":("Doc!","医官！"), "wait":("What to do...","接下来怎么做……"),
-                "follower":("I promise you'll be promoted when we get out!","我保证，回去后给你升官！"), "trainer":("What a previledge to have King training with you!","有国王陪你练习，真是至高的荣耀！") }
+            self.talkDic = { "ammoOut":("Reloading now!","正在填装！"), "shoot":("Power of King!","国王的力量！"), 
+                "fullCharge":("It's time to call my fighters!","是时候召唤我的战士们了！"), "underCharge":("What a previledge to see a king playing!","观赏国王展示，真是至高的荣耀！"), 
+                "hitted":("Doc!","医官！"), "wait":("What to do...","接下来怎么做……"), "follower":("I promise you'll be promoted when we get out!","我保证，回去后给你升官！") }
             self.oriWeaponR = {"normal":[ (0.05,0.45,0), (0.04,0.44,0), (0.04,0.46,0), (0.04,0.44,0), (0.04,0.46,0) ], 
                 "shoot":[ (0.08,0.55,1), (0.1,0.53,1), (0.12,0.5,0) ], "jump":(0.04,0.46,0), "superPower":(0.05,0.45,0)}
-            self.imgSwt = 8
             self.shootNum = 5
+            self.serv = None
             self.gender = "Male"
         elif VHero.no == -1:
             self.name = "servant"
             self.push = 6
             self.weight = 1
-            self.speed = 3
-            #self.itemDic["supAmmo"] = ("bullet","炮弹")
             self.talkDic = { "ammoOut":("No more powder...","没有火药了……"), "shoot":("Fuck off!","滚吧！"),
-                "hitted":("Ah!","啊！"), "wait":("My honor to stand with you.","很荣幸能和您并肩作战。"),
-                "follower":("Feel safer with you.","有你在感觉安全多了。"), "trainer":("People call me the prettiest trainer ever.","他们说我是有史以来最漂亮的训练师。") }
+                "fullCharge":("Fight!","战斗！"), "underCharge":("Still need to charge...","还需要充能……"), 
+                "hitted":("Ah!","啊！"), "wait":("My honor to stand with you.","很荣幸能和您并肩作战。"), 
+                "follower":("","") }
             self.oriWeaponR = { "normal":[ (0.13,0.82,1), (0.22,0.81,1), (0.2,0.8,1), (0.24,0.83,1), (0.2,0.8,1) ], 
                 "shoot":[ (0.1,0.64,1), (0.12,0.63,1), (0.12,0.63,1) ], "jump":(0.16,0.74,0), "superPower":(0.53,0.5,1)}
-            self.imgSwt = 8
             self.gender = "Female"
         self.rDamage = VHero.dmg
         self.arrowCnt = VHero.cnt
         self.critR = round(VHero.crit/100, 2)   # 转化为0-1之间的数
+        self.stunR = 0
         self.oriSpd = self.speed
         self.heroNo = VHero.no
         if keyDic:
             self.keyDic = keyDic
         
-        self.superPowerName = VHero.spName
-        self.superPowerManager = None
         # About the bag: -------------------------------------------
+        self.bagpack = Bagpack()
         self.activeProps = []
         self.coins = 0
         self.gems = 0
         self.expInc = 0
-                
         self.arrow = self.arrowCnt
         self.jpCnt = 0
-        self.superPowerCnt = 0         # 超级技能冷却时间的动态计数器
-        self.superPowerCoolTime = 420  # 超级技能的冷却时间上限，统一为7秒。
-        self.superPowerCast = 5        # 可以使用超级技能的次数。
         self.dmgReducDic = {
             "basic":dmgReduction, "physical":1, "fire":1, "corrosive":1, "freezing":1, "holy":1
         }   # 调节游戏难度所引起的受伤减少，为百分比。1表示原伤害。
@@ -235,9 +207,8 @@ class Hero(InanimSprite):
             "rightKey": lambda delay: self.moveX( delay, "right" )
         }   # 定义需要连续响应键盘按键的键名和对应的函数列表
 
-        self.ammoImg = load("image/"+self.name+"/supAmmo.png")
         self.ammoCircle = pygame.transform.smoothscale( load("image/ammoCircle.png"), (40, 40) )
-        self.lumi = 0           # 在mist中将会起作用，值越大，明亮范围越大
+        self.lumi = 0           # 明亮半径：在mist中将会起作用
         self.hitBack = 0
         self.spurtCanvas = None
         self.checkList = pygame.sprite.Group()
@@ -247,11 +218,20 @@ class Hero(InanimSprite):
         self.font = font[lgg]
         self.lgg = lgg
         self.doom = False
-        # About Bars:---------------------------
+        # About HP:---------------------------
         self.health = self.full = VHero.hp
         self.loading = self.LDFull = 180
         self.heal_bonus = 1
-        self.bar = HPBar(self.full, barOffset=2, color="green")
+        self.bar = HPBar(self.full, barOffset=12, color="green")
+        # About SuperPower: ----------------------------------------
+        self.superPowerCnt = 0      # 超级技能当前能量值
+        self.superPowerFull = VHero.superPowerFull  # 超级技能充满所需值
+        self.superPowerCast = 0     # 超级技能释放后图片停留计时
+        self.superPowerBar = HPBar(self.superPowerFull, blockVol=450, barOffset=2, color="yellow")
+        self.superPowerManager = None
+        if VHero.no>=0:
+            spicon = load(f"image/{self.name}/superPowerIcon.png").convert_alpha()
+            self.superPowerIcon = pygame.transform.smoothscale( spicon, (spicon.get_width()//2, spicon.get_height()//2) )
 
         # 初始化hero的图片库------------------------------------
         self.oriImgLeftList = [ load("image/"+self.name+"/heroLeft0.png").convert_alpha(), 
@@ -336,7 +316,7 @@ class Hero(InanimSprite):
         self.brand = load("image/"+self.name+"/brand.png").convert_alpha()
         self.jmpPos = [0,0]
         self.jmpInfo = ()
-        self.jmpCap = (1+self.kNum) * self.kNum //2
+        self.jmpCap = (1+self.kNum)*self.kNum //2 # 单次跳跃的上升距离，将在初始化时计算得出
 
         self.jmpSnd = pygame.mixer.Sound("audio/"+self.name+"/jump.wav")
         self.oriJmpSnd = self.jmpSnd
@@ -351,7 +331,7 @@ class Hero(InanimSprite):
         self.reloadSnd = pygame.mixer.Sound("audio/reload.wav")
         self.vomiSnd = pygame.mixer.Sound("audio/vomiSplash.wav")
         # 开场语
-        if VHero.no>=0:
+        if self.category=="hero":
             VHero.voice.play(0)
             self.superPowerVoice = pygame.mixer.Sound("audio/"+self.name+"/superPowerVoice.wav")
 
@@ -492,7 +472,8 @@ class Hero(InanimSprite):
         self.shootCnt = 18
 
     def castSuperPower(self, canvas):
-        if self.superPowerCast<=0 or self.superPowerCnt>0:  # 次数用尽或冷却中
+        if self.superPowerCnt<self.superPowerFull:  # not fully charged yet
+            self.talk = [self.talkDic["underCharge"][self.lgg], 60]
             return False
         self.superPowerVoice.play(0)
         canvas.addHalo( "holyHalo", 240 )
@@ -510,11 +491,20 @@ class Hero(InanimSprite):
             self.superPowerManager = SuperPowerManagerPriest(self)
         elif self.name=="king":
             self.superPowerManager = SuperPowerManagerKing(self)
-        self.superPowerCast -= 1
-        if self.superPowerCast > 0:
-            # 仍可以使用，进入冷却
-            self.superPowerCnt = self.superPowerCoolTime
-
+        self.superPowerCnt = 0
+        self.superPowerCast = 30
+    
+    def chargeSuperPower(self, amount):
+        if self.superPowerCnt==self.superPowerFull:
+            return
+        self.superPowerCnt += amount
+        if self.superPowerCnt > self.superPowerFull:
+            self.superPowerCnt = self.superPowerFull
+            pygame.mixer.Sound("audio/knight/superPowerCast.wav").play(0)
+            self.talk = [self.talkDic["fullCharge"][self.lgg], 90]
+            if self.spurtCanvas:
+                self.spurtCanvas.addSpatters( 12, [3,5,7], [36,42,48], (255,200,100,240), getPos(self,0.5,0.5), False )
+        
     def checkImg(self, delay, tower, heroes, key_pressed, spurtCanvas):
         """
         A pipeline to do the following checks and operations:
@@ -535,7 +525,7 @@ class Hero(InanimSprite):
             self.jmpInfo = ( self.dustList[ self.jpCnt//2 ], self.dustRect )
         else:
             self.jmpInfo = ()
-        # Check when hero is shooting an arrow.
+        # Check when hero is shooting.
         if ( self.shootCnt > 0 ) and (self.infected<=0):
             if not ( self.shootCnt % 6 ):     # Cnt每次等于6的倍数的时候就更换一次图片
                 indx = len(self.imgLib["shootLeftList"]) - self.shootCnt//6  # 指示图片序号的临时变量。工作原理：Cnt=18的时候，imgIndx应该为0；同理，Cnt=12,imgIndx=1；Cnt=6，indx=3。
@@ -573,7 +563,7 @@ class Hero(InanimSprite):
                 self.wpPos[0] = 1 - self.weaponR["jump"][0]
             self.wpPos[1] = self.weaponR["jump"][1]
             self.wpPos[2] = self.weaponR["jump"][2]
-        # Check when hero is suffering damage.
+        # Check when hero is taking damage.
         elif self.hitFeedIndx > 0:
             if (self.status=="right"):
                 self.setImg("hittedRight")
@@ -581,7 +571,8 @@ class Hero(InanimSprite):
                 self.setImg("hittedLeft")
             self.hitFeedIndx -= 1
         # Check when hero is casting superPower.
-        elif self.superPowerCnt > self.superPowerCoolTime-30:   # 刚刚施放技能的0.5s内，有施放图片
+        elif self.superPowerCast>0:     # 刚刚施放技能的0.5s内，有施放图片
+            self.superPowerCast -= 1
             if (self.status=="right"):
                 self.setImg("superPowerRight")
                 self.weapon.updateImg( self.imgLib["wpSuperPowerRight"] )
@@ -616,8 +607,8 @@ class Hero(InanimSprite):
                 self.talk = [self.talkDic["wait"][self.lgg], 60]
         # Always renew the position of the weapon.
         self.weapon.updatePos( getPos(self, self.wpPos[0], self.wpPos[1]) )
+        # Check key pressed.
         if self.category=="hero":
-            self.bagpack.update()
             for key_name in self.respondKeyDic:
                 if key_pressed[ self.keyDic[key_name] ]:    # 若被摁下，则call该匿名函数
                     if key_name=="shootKey":
@@ -687,11 +678,16 @@ class Hero(InanimSprite):
                 prop.fall( delay, tower.getTop(prop.onlayer), tower.groupList, GRAVITY )
                 if prop.work(tower.monsters, tower.groupList["0"], spurtCanvas):
                     vib = max(vib,12)
+            elif prop.propName == "torch":
+                prop.work(tower.monsters, spurtCanvas)      # 溅射的火星对范围内敌人造成伤害
             elif prop.propName == "battleTotem":
-                if not prop.checkExposion(spurtCanvas):   # 检查摧毁
+                if not prop.checkExposion(spurtCanvas):     # 检查摧毁
                     tracker = prop.run([self], spurtCanvas)
                     if tracker:
                         tower.allElements["mons1"].add( tracker )
+            elif prop.propName == "rustedHorn":
+                if prop.work(tower.monsters, heroes):
+                    vib = max(vib,8)
             elif prop.propName == "defenseTower":
                 if prop not in heroes:
                     heroes.append(prop)
@@ -699,8 +695,6 @@ class Hero(InanimSprite):
             else:   # Normal Durable prop.
                 prop.work()
         # 超级技能。
-        if self.superPowerCnt > 0:  # 若技能冷却中，进行冷却值
-            self.superPowerCnt -= 1
         if self.superPowerManager:
             if self.superPowerManager.run(delay, tower, heroes, spurtCanvas):    # 生效阶段，震动屏幕
                 vib = max(vib,6)
@@ -733,11 +727,11 @@ class Hero(InanimSprite):
                 spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,210,240), getPos(self, 0.5, 0.5), False )
 
     def useItem(self, spurtCanvas):
+        if self.bagpack.bagPt<0:
+            return ("You don't have items in bagpack!","你的背包中没有道具！")
         curName = self.bagpack.bagBuf[self.bagpack.bagPt]
         if curName == "fruit":
-            if not self.bagpack.hasItem("fruit"):
-                return ("You don't have a fruit.","你的背包中没有水果。")
-            elif self.infected>=0:
+            if self.infected>=0:
                 return ("Can't eat fruit when infected.","感染时无法使用。")
             elif self.health == self.full:
                 return ("Your HP is full at the time.","当前你的体力值已满。")
@@ -745,13 +739,11 @@ class Hero(InanimSprite):
                 self.fruitSnd.play(0)
                 self.bagpack.decItem("fruit")
                 self.recover(100)
-                if (self.health > self.full):
-                    self.health = self.full
                 spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,255,100,240), getPos(self, 0.5, 0.5), False )
         elif curName == "loadGlove":
             if (self.loading>=self.LDFull-1):
                 return ("No need for loading at the time.","当前无需填装。")
-            elif  self.infected>=0:
+            elif self.infected>=0:
                 return ("Can't eat fruit when infected.","感染时无法使用。")
             else:
                 self.fruitSnd.play(0)
@@ -759,24 +751,28 @@ class Hero(InanimSprite):
                 self.loading = self.LDFull-1
                 #spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,210,240), getPos(self, 0.5, 0.5), False )
         elif curName == "medicine":
-            if self.infected <= 0:
-                return ("You are not infected at the time.","当前你并未感染。")
+            if self.infected <=0 and self.health == self.full:
+                return ("You are neither infected nor injured.","你既未感染，也未受伤。")
             else:
                 self.fruitSnd.play(0)
                 self.bagpack.decItem("medicine")
                 spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,255,240), getPos(self, 0.5, 0.5), False )
-                # 恢复image和相关属性值
-                self.infected = -1
-                self.imgLib["leftList"] = self.oriImgLeftList
-                self.imgLib["rightList"] = self.oriImgRightList
-                self.imgLib["jumpLeft"] = self.oriImgJumpLeft
-                self.imgLib["jumpRight"] = self.oriImgJumpRight
-                self.imgLib["hittedLeft"] = self.oriImgHittedLeft
-                self.imgLib["hittedRight"] = self.oriImgHittedRight
-                self.imgIndx = 0
-                self.weaponR = self.oriWeaponR
-                self.jmpSnd = self.oriJmpSnd
-                self.shootSnd = self.oriShootSnd
+                if self.infected <= 0:
+                    # 未感染，回复体力
+                    self.recover(100)
+                else:
+                    # 感染，治愈：恢复image和相关属性值
+                    self.infected = -1
+                    self.imgLib["leftList"] = self.oriImgLeftList
+                    self.imgLib["rightList"] = self.oriImgRightList
+                    self.imgLib["jumpLeft"] = self.oriImgJumpLeft
+                    self.imgLib["jumpRight"] = self.oriImgJumpRight
+                    self.imgLib["hittedLeft"] = self.oriImgHittedLeft
+                    self.imgLib["hittedRight"] = self.oriImgHittedRight
+                    self.imgIndx = 0
+                    self.weaponR = self.oriWeaponR
+                    self.jmpSnd = self.oriJmpSnd
+                    self.shootSnd = self.oriShootSnd
         elif curName == "blastingCap":
             self.fruitSnd.play(0)
             self.bagpack.decItem("blastingCap")
@@ -894,6 +890,13 @@ class Hero(InanimSprite):
                 self.bagpack.decItem("shieldSpell")
                 self.activeProps.append( ShieldSpell(self) )
                 spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (255,255,160,240), getPos(self, 0.5, 0.5), False )
+        elif curName == "rustedHorn":
+            if self.oneInEffect("rustedHorn"):
+                return ("You are under the effect of another rusted horn.","你已有一个生锈的号角在生效。")
+            else:
+                self.bagpack.decItem("rustedHorn")
+                self.activeProps.append( RustedHorn(self) )
+                spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (255,210,160,240), getPos(self, 0.5, 0.5), False )
 
     def oneInEffect(self, propName):  # 检测是否有正在生效的某类用品
         for prop in self.activeProps:
@@ -1011,21 +1014,26 @@ class Hero(InanimSprite):
     def drawHeads(self, screen):
         if self.health<=0:
             return
-        # 画HP
+        # draw HP
         if self.hitFeedIndx:
             self.bar.setColor("lightGreen")
         else:
             self.bar.setColor("green")
         self.bar.paint(self, screen)
-        # 画loading条
         if self.category=="hero":
+            # draw loading bar
             self.drawLDBar( screen )
+            # draw super power bar
+            if self.superPowerCnt==self.superPowerFull:
+                self.drawSPBar( screen )
+            else:
+                self.superPowerBar.paint(self, screen, "superPower")
         # Draw talk.
         if len(self.talk):
             txt = self.font.render( self.talk[0], True, (255,255,255) )
             rect = txt.get_rect()
             rect.left = self.rect.left+self.rect.width//2-rect.width//2
-            rect.bottom = self.rect.top-20
+            rect.bottom = self.rect.top-24
             bg = pygame.Surface( (rect.width, rect.height) ).convert_alpha()
             bg.fill( (0,0,0,180) )
             screen.blit( bg, rect )
@@ -1067,11 +1075,6 @@ class Hero(InanimSprite):
         cRect.right = x+2
         cRect.top = y+self.bar.barH//2-cRect.height//2
         surface.blit( self.ammoCircle, cRect)
-        # 显示箭矢图标
-        #irect = self.ammoImg.get_rect()
-        #irect.left = cRect.left+cRect.width//2-irect.width//2
-        #irect.top = cRect.top+cRect.height//2-irect.height//2
-        #surface.blit( self.ammoImg, irect)
         # 显示数量信息
         txt = self.font.render( f"{self.arrow}", True, (255,255,255) )
         trect = txt.get_rect()
@@ -1087,6 +1090,21 @@ class Hero(InanimSprite):
         # Colors
         lightColor, color, shadeColor = self.bar.colorSet["blue"]
         pygame.draw.arc(surface, color, cRect, start_angle, stop_angle, width=4)
+        return True
+    
+    def drawSPBar(self, surface, height=10):
+        x = self.rect.left+self.rect.width//2 +self.bar.barLen/2   # 中线减去血条长度的一半。
+        y = self.rect.top-height
+        # 画左侧弹药圆圈
+        cRect = self.ammoCircle.get_rect()
+        cRect.left = x+2
+        cRect.top = y+self.bar.barH//2-cRect.height//2
+        surface.blit( self.ammoCircle, cRect)
+        # 显示箭矢图标
+        irect = self.superPowerIcon.get_rect()
+        irect.left = cRect.left+cRect.width//2-irect.width//2
+        irect.top = cRect.top+cRect.height//2-irect.height//2
+        surface.blit( self.superPowerIcon, irect)
         return True
 
     def _checkMove(self, back=0):
@@ -1121,85 +1139,10 @@ class Hero(InanimSprite):
             prop.level(dist)
     
 
-class Bagpack():
-    def __init__(self, arrowName):
-        self.itemDic = { "supAmmo":arrowName, "fruit":("Fruit","水果"), "medicine":("Medicine","治愈血清"), "torch":("Torch","火把"), 
-            "copter":("Copter","竹蜻蜓"), "herbalExtract":("Herbal Extract","灵草精华"), "simpleArmor":("Simple Armor","简易机甲"), "missleGun":("Missle Gun", "火箭发射器"), 
-            "cooler":("Cooler","清凉圣水"), "blastingCap":("Blasting Cap","爆破雷管"), "shieldSpell":("Shield Spell","护盾法术"), "toothRing":("Tooth Ring","龙牙之戒"), 
-            "battleTotem":("Battle Totem","战斗图腾"), "alcohol":("Alcohol","烈酒"), "pesticide":("Pesticide","杀虫喷雾"), 
-            "loadGlove":("Quick-fix Glove","快速填装手套"), "defenseTower":("Magic Defense","玉石防御塔"), "coin":("Coin","金币"),
-            "servant":("Lit-Armor Servant","轻甲侍从") }
-        
-        self.bag = {}   # store all items in the form of dictionary. It doesnot support index, so a buffer is needed.
-        for each in self.itemDic:
-            if each not in ("supAmmo", "coin", "servant"):
-                self.bag[each] = 0
-        
-        self.bagImgList = {}
-        for item in self.bag:
-            self.bagImgList[item] = load("image/"+item+".png").convert_alpha()
-        
-        self.bagBuf = []    # a buffer for hero.bag, dynamically renew itself each fresh, only store items that hero has.
-        # Initialize the buffer with only 2 "fruit".
-        self.bag["fruit"] = 2
-        self.bagBuf.append( "fruit" )
-        self.bagPt = 0      # A pointer that indicates the current item in the bag buffer.
-        # Page Info.
-        self.page = 0
-        self.pageLen = 5
-
-    def hasItem(self, name):
-        if self.bag[name]>0:
-            return True
-        else:
-            return False
-    
-    def incItem(self, name, number):
-        self.bag[name] += number
-
-    def decItem(self, name):
-        self.bag[name] -= 1
-
-    def shiftItem(self):
-        if len(self.bagBuf)>1:
-            self.bagPt = (self.bagPt+1) % len(self.bagBuf)
-            # Check whether to shift page.
-            if not self.bagPt%self.pageLen:
-                if len(self.bagBuf)>(self.page+1)*self.pageLen:
-                    self.page += 1
-                else:
-                    self.page = 0
-
-    def getPageVol(self):
-        if len(self.bagBuf)>=self.pageLen*(self.page+1):
-            return self.pageLen
-        else:
-            return len(self.bagBuf)%self.pageLen
-
-    def update(self):
-        # Refresh hero.bag's buffer, delete 0 items and add new items.
-        for item in self.bagBuf:
-            if self.bag[item] == 0 and not item=="fruit":    # 如果有一项数值变为0，则从缓冲区删除（fruit除外）
-                self.bagBuf.remove(item)
-                self.bagPt -= 1
-        for item in self.bag:
-            if self.bag[item] > 0 and item not in self.bagBuf: # 如果有新的项，则添加到缓冲区
-                self.bagBuf.append( item )
-        
-    def readItemByName(self, name):
-        # 根据item名字，返回其数量和图片
-        return (self.bag[name], self.bagImgList[name])
-
-    def readItemByPt(self, pt=-1):
-        # 返回当前缓冲区的指定物品数量和图片
-        if pt==-1 or pt>=len(self.bagBuf):  # 若下标超界，亦视作-1
-            curName = self.bagBuf[self.bagPt]
-        else:
-            curName = self.bagBuf[pt]
-        return (self.bag[curName], self.bagImgList[curName])
-
-# ===============================================================
-class Ammo(InanimSprite):  # Ammo类：各种ammo的基本原型
+# ==========================================================
+# ========================= Ammos ==========================
+# ==========================================================
+class Ammo(InanimSprite):  # 各种ammo的基本原型
     
     def __init__(self, hero, pos, spd, category="bullet", bldNum=0, push=0, duration=RANGE["NORM"]):  # 参数hero为发射者的对象引用。
         # bullet是最原始的子弹模型，函数简单，没有花里胡哨的能力和效果。功能更强的：bulletPlus
@@ -1230,11 +1173,13 @@ class Ammo(InanimSprite):  # Ammo类：各种ammo的基本原型
         # 存在时间。默认为knight：720
         self.duration = duration
         # 是否暴击
-        self.crit = True if random()<hero.critR else False
+        self.crit = True if (random()<hero.critR) else False
         if self.crit:
             self.damage = round(self.damage*1.5)
             self.push = round(self.push*1.5)
             self.bldNum = round(self.bldNum*1.5)
+        # 是否眩晕
+        self.stun = True if (self.crit or random()<hero.stunR) else False
 
     def move(self, monsters, canvas, bg_size):
         self.rect.left += self.speed[0]
@@ -1248,10 +1193,11 @@ class Ammo(InanimSprite):  # Ammo类：各种ammo的基本原型
             self.erase(canvas)
             return hitInfo
 
-    def hitMonster(self, monsters, single=True, r=0):
+    def hitMonster(self, monsters, single=True, r=0, chargeSP=True):
         """
         param single: True表示单一伤害。设为False则会对所有monster进行检测。
         param r: r=0表示单体伤害，r>0则为范围伤害，会对r半径内的所有怪物造成伤害。
+        param chargeSP: 造成伤害时是否给英雄充能。
         """
         if r>0:
             formerPos = [self.rect.left+self.rect.width//2, self.rect.top+self.rect.height//2]
@@ -1278,7 +1224,11 @@ class Ammo(InanimSprite):  # Ammo类：各种ammo的基本原型
                     deadInfo = each.category
                 else:
                     deadInfo = False
+                    if self.stun:
+                        each.stun(30)
                 self.owner.preyList.append( (pos, each.bldColor, self.bldNum, deadInfo, each.coin, self.crit) )
+                if chargeSP:
+                    self.owner.chargeSuperPower(self.damage)
                 if single:
                     return True
     
@@ -1305,14 +1255,13 @@ class Javelin(Ammo):
         pygame.mixer.Sound("audio/getItem.wav").play(0)
         # 修改owner属性数量，设定substance的目的坐标
         self.owner.arrow += 1
-        tgtPos = [ self.owner.slot.ctrDic["brand"][0]+bg_size[0]//2, self.owner.slot.ctrDic["brand"][1]+bg_size[1]//2 ]
-        substance = mapManager.ChestContent("supAmmo", self.owner.ammoImg, 1, getPos(self,0.5,0.5), tgtPos)
+        substance = ChestContent("javelin", self.image, 1, getPos(self,0.5,0.5), self.owner.rect)
         self.owner.eventList.append( substance )
         self.kill()
         del self
         return True
     
-    def move(self, delay, monsters, canvas, bg_size, GRAVITY=7):
+    def move(self, delay, monsters, canvas, bg_size, GRAVITY=8):
         if self.speed[0]==0:           # 水平速度为0，表示已经停下，等待被owner重新收集
             if collide_mask(self, self.owner):
                 self.fetch(bg_size)
@@ -1430,7 +1379,7 @@ class HolyLight(Ammo):
         self.dmgType = "holy"
         self.dmgDura = 3    # 最多可命中3个目标（弹射2次）
     
-    def hitMonster(self, monsters):
+    def hitMonster(self, monsters, chargeSP=True):
         for each in monsters:
             if collide_mask(self, each):
                 if each == self.lastTgt:
@@ -1443,8 +1392,12 @@ class HolyLight(Ammo):
                 else:
                     self.lastTgt = each
                     deadInfo = False
+                    if self.crit:
+                        each.stun(30)
                 pos = getPos(self, 0.5, 0.5)
                 self.owner.preyList.append( (pos, each.bldColor, self.bldNum, deadInfo, each.coin, self.crit) )
+                if chargeSP:
+                    self.owner.chargeSuperPower(self.damage)
                 # 处理完一次击中后，伤害减少40点（初始伤害120），检查是否还可追击下一次
                 self.damage -= 40
                 self.dmgDura -= 1
@@ -1493,755 +1446,61 @@ class HolyLight(Ammo):
     def _explodeEffect(self, canvas):
         canvas.addWaves( getPos(self, 0.5, 0.5), (255,192,203,240), 20, 12 )
         
-# ========================================================
-# ======================= bag prop =======================
-class Prop(object):
-    def __init__(self, propName, duration, user):
-        self.propName = propName  # 道具名称。
-        self.duration = duration  # 道具耐久，同时还可用作计数器。
-        self.user = user          # 使用者对象的引用（Hero实例）。
-
-    def work(self):
-        pass
-
-    def erase(self):
-        if self in self.user.activeProps:
-            self.user.activeProps.remove(self)
-        del self
-
-    def lift(self, dist):
-        return
-    
-    def level(self, dist):
-        return
-    
-# ---------------------------
-class Cooler(Prop):
-    def __init__(self, user):
-        Prop.__init__(self, "cooler", 1320, user)
-        # Draw canvas (shield).
-        size = max(self.user.rect.width, self.user.rect.height)
-        self.canvas = pygame.Surface( (size, size) ).convert_alpha()
-        self.canvas.fill( (0,0,0,0) )
-        self.rect = self.canvas.get_rect()
-        pygame.draw.circle( self.canvas, (255,255,200,100), (self.rect.width//2,self.rect.height//2), self.rect.height//2 )
-        userC = getPos(self.user, 0.5, 0.5)
-        self.rect.left = userC[0] - self.rect.width//2
-        self.rect.bottom = userC[1] - self.rect.height//2
-        # 修改特定伤害减轻效果65%
-        self.user.dmgReducDic["fire"] = 0.35
-
-    def work(self):
-        self.duration -= 1
-        if self.duration <= 0:
-            self.user.dmgReducDic["fire"] = 1   # 重置为1
-            self.erase()
-            return
-        # update Position.
-        pos = getPos(self.user, 0.5, 0.5)
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.top = pos[1] - self.rect.height//2
-        
-    def paint(self, surface):
-        # 效果快结束时闪烁以提示。
-        if self.duration<=100:
-            if self.duration%10 > 6:
-                return
-        surface.blit( self.canvas, self.rect )
-
-class ToothRing(Prop):
-    def __init__(self, user):
-        Prop.__init__(self, "toothRing", 0, user)
-        self.critDots = []
-        self.ori_critR = self.user.critR
-        self.user.critR = 1     # 暴击率置为100%
-        # 立刻将弹药拉满、填装状态取消
-        self.user.arrow = self.user.arrowCnt
-        self.user.loading = self.user.LDFull
-
-    def work(self):
-        if not self.duration % 4:
-            # 处理已有的点。
-            for dot in self.critDots:
-                dot[1] -= 1
-                if dot[1] == 0:
-                    self.critDots.remove(dot)
-            # 添加一个治愈点（圆形）。
-            pos = getPos( self.user, random(), random() )
-            critDot = [ pos, choice((5,6)) ]   # 分别是位置和半径。
-            self.critDots.append(critDot)
-        # 每当进入填装模式时，结束效果。
-        if self.user.loading == 0:
-            self.user.critR = self.ori_critR    # 暴击率重置为正常值
-            self.erase()
-            return
-
-    def paint(self, surface):
-        for dot in self.critDots:
-            pygame.draw.circle( surface, (200,10,120), dot[0], dot[1]+1 )
-            pygame.draw.circle( surface, (180,0,100), dot[0], dot[1] )
-
-# ---------------------------
-class HerbalExtract(Prop):
-    def __init__(self, user):
-        Prop.__init__(self, "herbalExtract", 300, user)
-        self.cureDots = []
-        self.user.bar.barBG.fill( (180,255,240,210) )
-
-    def work(self):
-        self.duration -= 1
-        if not self.duration % 4:
-            # 处理已有的点。
-            for dot in self.cureDots:
-                dot[1] -= 1
-                if dot[1] == 0:
-                    self.cureDots.remove(dot)
-            # 添加一个治愈点（圆形）。
-            pos = getPos( self.user, random(), random() )
-            cureDot = [ pos, choice((5,6)) ]   # 分别是位置和半径。
-            self.cureDots.append(cureDot)
-        if not self.duration % 10:
-            # 给英雄回血。
-            self.user.recover(10)
-            if self.user.health >= self.user.full:
-                self.duration = 0
-        # 如果效果用完，或者英雄受到伤害，则终止回复效果。
-        if self.duration <= 0 or self.user.hitFeedIndx:
-            self.user.bar.barBG.fill( (255,255,255,210) )
-            self.erase()
-            return
-
-    def paint(self, surface):
-        for dot in self.cureDots:
-            pygame.draw.circle( surface, (60,240,210), dot[0], dot[1]+1 )
-            pygame.draw.circle( surface, (30,190,160), dot[0], dot[1] )
-
-class BlastingCap(Prop, InanimSprite):
-    snd = None
-
-    def __init__(self, owner, speed, onlayer):
-        if not BlastingCap.snd:
-            BlastingCap.snd = pygame.mixer.Sound("audio/blastcap.wav")
-        
-        Prop.__init__(self, "blastingCap", 90, owner)
-        InanimSprite.__init__(self, "blastingCap")
-        self.image = load("image/blastingCapCasted.png").convert_alpha()
-        self.alarm = generateShadow(self.image, (255,5,5,80))
-        self.mask = pygame.mask.from_surface(self.image)
-        self.rect = self.image.get_rect()
-        x, y = getPos(owner, 0.5, 0.6)
-        self.rect.left = x-self.rect.width//2
-        self.rect.top = y-self.rect.height//2
-        self.rad = 220
-        self.damage = 500
-        self.speed = speed
-        self.onlayer = onlayer  # 体系和hero一致
-        self.bounce = 2         # 落地弹跳次数
-
-    def work(self, sprites, sideWalls, canvas):
-        self.duration -= 1
-        # Horrizontal Move
-        self.rect.left += self.speed[0]
-        if pygame.sprite.spritecollide(self, sideWalls, False, collide_mask):
-            self.speed[0] = -self.speed[0]
-        # explode
-        if self.duration == 0:
-            self.snd.play(0)
-            pos1 = getPos(self, 0.5,0.5)
-            # draw explosion waves
-            canvas.addExplosion( 
-                pos1, self.rad*2//3, self.rad//2, rInc=4, wFade=8, dotD=(52,56,60)
-            )
-            # deal damages
-            for each in sprites:
-                pos2 = getPos(each, 0.5,0.5)
-                dist_sq = (pos2[0]-pos1[0])**2 + (pos2[1]-pos1[1])**2
-                if dist_sq < self.rad**2:
-                # 对命中的怪物进行受伤操作，记录其是否死亡的真值（hitted返回True表示死亡）
-                    if each.hitted(self.damage, 0, "fire")==True:
-                        deadInfo = each.category
-                    else:
-                        deadInfo = False
-                    self.user.preyList.append( (pos2, each.bldColor, 8, deadInfo, each.coin, False) )  # 道具爆炸，无暴击
-            self.kill()
-            self.erase()
-            return "vib"
-    
-    def fall(self, delay, keyLine, groupList, GRAVITY):
-        if not delay%2 and self.speed[1]<GRAVITY:
-            self.speed[1] += 1
-        self.rect.top += self.speed[1]
-        FLAG = False
-        while ( pygame.sprite.spritecollide(self, groupList[str(self.onlayer+1)], False, collide_mask) ):  # 如果和参数中的物体相撞，则尝试纵坐标-1
-            FLAG = True
-            self.rect.bottom -= 1
-            self.speed[1] = 0
-        if FLAG and self.bounce>0:
-            self.bounce -= 1
-            self.speed[1] = -4
-            self.speed[0] = self.speed[0]//2
-        if self.rect.top >= keyLine:
-            self.onlayer = max(self.onlayer-2, -2)
-    
-    def paint(self, screen):
-        screen.blit(self.image, self.rect)
-        if self.duration<40:
-            screen.blit(self.alarm, self.rect)
-
-# ---------------------------
-class Torch(Prop):
-    def __init__(self, user):  # 火炬的燃烧这里采用任意的图片，因此不设置图片的循环标记。
-        Prop.__init__(self, "torch", 1960, user)
-        self.imgLeft = [ load("image/torchOn0.png").convert_alpha(), load("image/torchOn1.png").convert_alpha(),
-            load("image/torchOn2.png").convert_alpha(), load("image/torchOn1.png").convert_alpha() ]
-        self.imgRight = [ flip(self.imgLeft[0], True, False), flip(self.imgLeft[1], True, False), 
-            flip(self.imgLeft[2], True, False), flip(self.imgLeft[3], True, False) ]
-        self.posR = (0.6,0.65)    # 只保留左向时的位置信息
-        self.image = self.imgLeft[2]
-        self.rect = self.image.get_rect()
-        userC = getPos(self, self.posR[0], self.posR[1])
-        self.rect.left = userC[0] - self.rect.width//2
-        self.rect.bottom = userC[1] - self.rect.height//2
-
-    def work(self):
-        self.duration -= 1
-        self.user.lumi = min(120, self.duration)
-        if self.duration <= 0:
-            self.erase()
-            return
-        # Update Image.
-        if not (self.duration % 3):
-            if self.user.status=="left":
-                self.image = choice(self.imgLeft)
-            elif self.user.status=="right":
-                self.image = choice(self.imgRight)
-            self.rect = self.image.get_rect()
-            self.mask = pygame.mask.from_surface(self.image)
-        # update Position.
-        xR = self.posR[0] if self.user.status=="left" else 1-self.posR[0]
-        pos = getPos(self.user, xR, self.posR[1])
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.top = pos[1] - self.rect.height//2
-
-    def paint(self, surface):
-        surface.blit( self.image, self.rect )
-
-# ---------------------------
-class Copter(Prop):
-    def __init__(self, user):
-        Prop.__init__(self, "copter", 860, user)
-        self.imgLeft = [ load("image/copter0.png").convert_alpha(), load("image/copter1.png").convert_alpha(),
-            load("image/copter2.png").convert_alpha() ]
-        self.imgRight = [ flip(self.imgLeft[0], True, False), flip(self.imgLeft[1], True, False), 
-            flip(self.imgLeft[2], True, False) ]
-        self.posR = (0.5,0.05)
-        self.imgIndx = 0
-        self.image = self.imgLeft[self.imgIndx]
-        self.rect = self.image.get_rect()
-        userC = getPos(self, self.posR[0], self.posR[1])
-        self.rect.left = userC[0] - self.rect.width//2
-        self.rect.bottom = userC[1] - self.rect.height//2
-        # substitute user's 相关函数。
-        self.oriJump = self.user.jump
-        self.oriFall = self.user.fall
-        self.user.respondKeyDic["jumpKey"] = lambda delay: self.moveY(delay, -3)
-        self.user.respondKeyDic["downKey"] = lambda delay: self.moveY(delay, 3)
-        self.user.jump = self.jumpFly
-        self.user.fall = self.fallFly
-
-    def work(self):
-        self.duration -= 1
-        if self.duration<=100:
-            self.user.spurtCanvas.addSmoke(1,(3,4,5),5,(10,10,10,150),getPos(self,0.5,random()),4)
-            if self.duration <= 0:
-                self.user.jump = self.oriJump
-                self.user.fall = self.oriFall
-                self.user.respondKeyDic.pop("jumpKey")
-                self.user.respondKeyDic.pop("downKey")
-                self.erase()
-                return
-        # Update Image.
-        if not (self.duration % 3):
-            self.imgIndx = (self.imgIndx+1) % len(self.imgLeft)
-            if self.user.status=="left":
-                self.image = self.imgLeft[self.imgIndx]
-            elif self.user.status=="right":
-                self.image = self.imgRight[self.imgIndx]
-            self.rect = self.image.get_rect()
-        # update Position.
-        xR = self.posR[0] if self.user.status=="left" else 1-self.posR[0]
-        pos = getPos(self.user, xR, self.posR[1])
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.top = pos[1] - self.rect.height//2
-
-    def paint(self, surface):
-        surface.blit( self.image, self.rect )
-    
-    # Redefine the moving methods of the hero. (for flying)
-    def jumpFly(self, keyLine):
-        self.user.aground = False
-        while ( getCld(self.user, self.user.checkList, ["sideWall","baseWall","blockStone"]) ):  # 如果和参数中的物体重合，则回退1高度
-            self.user.rect.bottom += 1        # 循环+1，直到不再和任何物体重合为止，跳出循环
-        if ( self.user.rect.bottom <= keyLine ):
-            self.user.shiftLayer(2, None)
-    
-    def fallFly(self, keyLine, newLine, heightList, GRAVITY):
-        self.user.rect.bottom += self.user.gravity  # 尝试将自身纵坐标减去重力值
-        # 获得所有碰撞了的物体对象，并针对每一个碰撞了的item执行相应的响应动作。这里不会触发特殊砖块的效果。
-        for item in pygame.sprite.spritecollide(self.user, self.user.checkList, False, collide_mask):
-            if item.category in self.user.interactiveList:
-                item.interact(self.user)
-        # 飞行状态不重复下落，逐步减缓重力。
-        if self.user.gravity>0:
-            self.user.gravity -= 1
-        # 如果和参数中的物体重合，则回退1高度
-        while getCld(self.user, self.user.checkList, ["baseWall","specialWall","sideWall","blockStone","house"]):
-            self.user.aground = True
-            self.user.rect.bottom -= 1    # 循环-1，直到不再和任何物体重合为止
-        self.user.renewCheckList(newLine) # 更新self.checkList（跳跃函数中不必更新，只有这里需要更新）
-        # 判断是否要向下调整层数.
-        if ( self.user.rect.top >= keyLine ):
-            self.user.shiftLayer(-2, heightList)
-
-    def moveY(self, delay, to):
-        self.user.lift(to)
-        if to<0:
-            self.user.k1 = 1   # 为了能够执行jump函数，检查向上调整层数
-        elif to>0:
-            self.user.k1 = 0   # 为了能够执行fall函数，检查向下调整层数
-    
-class Pesticide(Prop):
-    def __init__(self, user):
-        Prop.__init__(self, "pesticide", 52, user)
-        # Equip Sound:
-        pygame.mixer.Sound("audio/mecha.wav").play(0)
-        self.spraySnd = pygame.mixer.Sound("audio/pesticide.wav")
-        self.imgLeft = load("image/pesticideEquiped.png").convert_alpha()
-        self.imgRight = flip(self.imgLeft, True, False)
-        self.posR = (0.5,0.55)
-        self.image = self.imgLeft
-        self.rect = self.image.get_rect()
-        userC = getPos(self, self.posR[0], self.posR[1])
-        self.rect.left = userC[0] - self.rect.width//2
-        self.rect.bottom = userC[1] - self.rect.height//2
-        self.accum = self.accumFull = 6
-        # 修改、替换user的相关函数。
-        self.oriArrow = self.user.arrow
-        self.user.loading = self.user.LDFull
-        self.user.arrow = self.duration
-        self.oriShoot = self.user.shoot
-        self.user.shoot = lambda tower, canvas: 1    # set to void function
-        self.user.respondKeyDic["shootKey"] = lambda monsters: self.shootPesticide(monsters)
-
-    def work(self):
-        if self.duration <= 0:      # pesticide used up，还原各属性
-            self.user.arrow = self.oriArrow
-            self.user.shoot = self.oriShoot
-            self.user.respondKeyDic.pop("shootKey")
-            self.erase()
-            return
-        if self.user.status=="left":
-            self.image = self.imgLeft
-        elif self.user.status=="right":
-            self.image = self.imgRight
-        self.rect = self.image.get_rect()
-        # update Position.
-        xR = self.posR[0] if self.user.status=="left" else 1-self.posR[0]
-        pos = getPos(self.user, xR, self.posR[1])
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.top = pos[1] - self.rect.height//2
-
-    def shootPesticide(self, monsters):
-        if (self.user.arrow > 0) and (self.user.shootCnt == 0):
-            if self.spraySnd.get_num_channels()==0:
-                self.spraySnd.play()
-            if random() <= 0.1:
-                self.user.talk = [self.user.talkDic["shoot"][self.user.lgg], 60]
-            if self.user.status=="left":
-                posx = 0.1
-                spd = [ choice([-2,-3,-4]), choice([-3,-2,-1,1,2,3]) ]
-            else:
-                posx = 0.9
-                spd = [ choice([2,3,4]), choice([-3,-2,-1,1,2,3]) ]
-            # make ammo object
-            for i in range(2):
-                self.user.spurtCanvas.addAirAtoms(self.user, 2, getPos(self,posx,0.4+random()*0.2), 
-                    spd, monsters, "physical")
-            self.accum -= 1
-            if self.accum<=0:
-                self.user.arrow -= 1
-                self.duration -= 1
-                self.accum = self.accumFull
-
-    def paint(self, surface):
-        surface.blit( self.image, self.rect )
-
-# ---------------------------
-class Alcohol(Prop):
-    def __init__(self, user):
-        Prop.__init__(self, "alcohol", 1320, user)
-        # Draw canvas (shield).
-        size = max(self.user.rect.width, self.user.rect.height)
-        self.canvas = pygame.Surface( (size, size) ).convert_alpha()
-        self.canvas.fill( (0,0,0,0) )
-        self.rect = self.canvas.get_rect()
-        pygame.draw.circle( self.canvas, (255,120,120,100), (self.rect.width//2,self.rect.height//2), self.rect.height//2 )
-        userC = getPos(self.user, 0.5, 0.5)
-        self.rect.left = userC[0] - self.rect.width//2
-        self.rect.bottom = userC[1] - self.rect.height//2
-        # 修改、替换user的相关函数
-        self.user.dmgReducDic["freezing"] = 0.4
-        self.oriFreeze = self.user.freeze
-        self.user.freeze = self.freezeAlcohol
-
-    def work(self):
-        self.duration -= 1
-        if self.duration <= 0:
-            self.user.freeze = self.oriFreeze
-            self.user.dmgReducDic["freezing"] = 1
-            self.erase()
-            return
-        # update Position.
-        pos = getPos(self.user, 0.5, 0.5)
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.top = pos[1] - self.rect.height//2
-
-    def freezeAlcohol(self, decre):
-        return
-        
-    def paint(self, surface):
-        # 效果快结束时闪烁以提示。
-        if self.duration<=100:
-            if self.duration%10 > 6:
-                return
-        surface.blit( self.canvas, self.rect )
-
-class BattleTotem(Prop, mapManager.Totem):
-    def __init__(self, user, wall, onlayer):
-        Prop.__init__(self, "battleTotem", 0, user)
-        mapManager.Totem.__init__(self, "battleTotem", wall, onlayer)
-
-    def run(self, heroes, spurtCanvas):
-        spurtCanvas.addSmoke( 1, (2,4), 5, (255,90,90,240), getPos(self,0.5,random()), 30 )
-        # Check highlight
-        if self.ltCnt>0:
-            self.ltCnt -= 1
-        self.coolDown -= 1
-        if self.coolDown<=0:
-            # 冷却结束，释放治疗。若未找到，则coolDown一直为0
-            for hero in heroes:
-                if hero.category=="hero" and hero.arrow < hero.arrowCnt:
-                    self.tgt = hero
-                    tracker = mapManager.Tracker("battleLight", getPos(self,0.5,0.1), hero, (255,250,90,240), 1)
-                    self.snd.play(0)
-                    self.coolDown = randint(self.cntFull-10, self.cntFull+10)    # 投递完成，重置冷却时间
-                    self.ltCnt = 20
-                    return tracker
-            self.coolDown = 0
-
-    def lift(self, dist):
-        self.rect.bottom += dist
-    
-    def level(self, dist):
-        self.rect.left += dist
-    
-# ---------------------------
-class SimpleArmor(Prop):
-    def __init__(self, user):
-        Prop.__init__(self, "simpleArmor", 240, user)
-        # Equip Sound:
-        pygame.mixer.Sound("audio/mecha.wav").play(0)
-        self.imgLeft = load("image/simpleArmorEquiped.png").convert_alpha()
-        self.imgRight = flip(self.imgLeft, True, False)
-        self.posR = (0.5,0.55)
-        self.image = self.imgLeft
-        self.rect = self.image.get_rect()
-        userC = getPos(self, self.posR[0], self.posR[1])
-        self.rect.left = userC[0] - self.rect.width//2
-        self.rect.bottom = userC[1] - self.rect.height//2
-        # 修改、替换user的相关函数。
-        self.oriBldColor = self.user.bldColor
-        self.user.bldColor = (90,90,90,210)
-        self.oriHitted = self.user.hitted
-        self.user.hitted = self.hittedArmor
-        # The followings are parameters about Duration bar.
-        self.blockLen = self.user.bar.blockLen
-        self.gap = self.user.bar.gap
-        barGaps = ( math.ceil( self.duration//10/self.user.bar.blockVol )-1)*self.gap +self.gap*2 # 格子中间及两端间隔的数量。
-        self.barLen = self.duration//10*(self.blockLen//self.user.bar.blockVol) + barGaps     # 计算血条总长度
-        self.barH = self.user.bar.barH
-
-    def work(self):
-        if self.duration <= 0:
-            self.user.hitted = self.oriHitted
-            self.user.bldColor = self.oriBldColor
-            self.erase()
-            return
-        if self.user.status=="left":
-            self.image = self.imgLeft
-        elif self.user.status=="right":
-            self.image = self.imgRight
-        self.rect = self.image.get_rect()
-        # update Position.
-        xR = self.posR[0] if self.user.status=="left" else 1-self.posR[0]
-        pos = getPos(self.user, xR, self.posR[1])
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.top = pos[1] - self.rect.height//2
-
-    def hittedArmor(self, damage, pushed, dmgType):
-        self.duration -= damage * self.user.dmgReducDic["basic"]
-        if pushed>0:    # 向右击退
-            self.user.hitBack = max( pushed-self.user.weight, 0 )
-        elif pushed<0:  # 向左击退
-            self.user.hitBack = min( pushed+self.user.weight, 0 )
-        if random()<0.1:
-            self.user.talk = [self.user.talkDic["hitted"][self.user.lgg], 60]
-        
-    def paint(self, surface):
-        surface.blit( self.image, self.rect )
-        # 以上是画装甲，以下是画血条。
-        health = max( self.duration//10, 0 )
-        color, shadeColor = (90, 90, 90), (10, 10, 10)     # 灰色
-        x = self.user.rect.left+self.user.rect.width//2 -self.user.bar.barLen/2   # 中线减去血条长度的一半。
-        y = self.user.rect.top-self.user.bar.barOffset
-        # 画内部血格
-        offset = 0           # 用于计算每个方格的偏移值
-        while (health > 0):
-            w = min(self.blockLen, health)
-            block = pygame.Rect( x+self.gap+offset, y+self.gap, w, self.barH-self.gap*2 )
-            shadow = pygame.Rect( x+self.gap+offset, block.bottom-self.gap*2, w, self.gap*2 )
-            pygame.draw.rect( surface, color, block )
-            pygame.draw.rect( surface, shadeColor, shadow )
-            health -= self.user.bar.blockVol
-            offset += (self.blockLen+self.gap)
-
-class MissleGun(Prop):
-    def __init__(self, user):
-        Prop.__init__(self, "missleGun", 4, user)
-        # Equip Sound:
-        pygame.mixer.Sound("audio/mecha.wav").play(0)
-        self.imgLeft = load("image/missleGunEquiped.png").convert_alpha()
-        self.imgRight = flip(self.imgLeft, True, False)
-        self.posR = (0.5,0.55)
-        self.image = self.imgLeft
-        self.rect = self.image.get_rect()
-        userC = getPos(self, self.posR[0], self.posR[1])
-        self.rect.left = userC[0] - self.rect.width//2
-        self.rect.bottom = userC[1] - self.rect.height//2
-        # 修改、替换user的相关函数。
-        self.oriArrow = self.user.arrow
-        self.user.arrow = self.duration
-        self.oriAmmoImg = self.user.ammoImg
-        self.user.ammoImg = load("image/stg6/missle.png").convert_alpha()
-        self.oriShoot = self.user.shoot
-        self.user.shoot = self.shootMissle
-
-    def work(self):
-        if self.duration <= 0:      # missles used up，还原各属性
-            self.user.arrow = self.oriArrow
-            self.user.ammoImg = self.oriAmmoImg
-            self.user.shoot = self.oriShoot
-            self.erase()
-            return
-        if self.user.status=="left":
-            self.image = self.imgLeft
-        elif self.user.status=="right":
-            self.image = self.imgRight
-        self.rect = self.image.get_rect()
-        # update Position.
-        xR = self.posR[0] if self.user.status=="left" else 1-self.posR[0]
-        pos = getPos(self.user, xR, self.posR[1])
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.top = pos[1] - self.rect.height//2
-
-    def shootMissle(self, tower, spurtCanvas=None):
-        if (self.user.arrow > 0) and (self.user.shootCnt == 0):
-            if random() <= 0.2:
-                self.user.talk = [self.user.talkDic["shoot"][self.user.lgg], 60]
-            if self.user.status=="left":
-                pos = getPos(self, 0, 0.5)
-                self.user.hitBack = 6
-            else:
-                pos = getPos(self, 1, 0.5)
-                self.user.hitBack = -6
-            # make ammo object
-            scrnList = []
-            goalieList = []
-            for each in tower.monsters:
-                if (each.rect.bottom>0) and (each.rect.top<2*self.user.rect.bottom):  # 大致地估算是否在屏幕范围内。
-                    # 优先攻击非地面生物
-                    if each.manner!="GROUND" or each.manner=="CRAWL":
-                        goalieList.append(each)
-                    else:
-                        scrnList.append(each)
-            if len(goalieList)>0:
-                tgt = choice(goalieList)
-            elif len(scrnList)>0:
-                tgt = choice(scrnList)
-            else:
-                tgt = None
-            missle = enemy.Missle( pos, self.user.status, 400, tgt )
-            tower.allElements["mons1"].add(missle)
-            self.user.arrow -= 1
-            self.duration -= 1
-        
-    def paint(self, surface):
-        surface.blit( self.image, self.rect )
-
-# ---------------------------
-class ShieldSpell(Prop):
-    def __init__(self, user):
-        Prop.__init__(self, "shieldSpell", 1320, user)
-        # Draw canvas (shield).
-        size = max(self.user.rect.width, self.user.rect.height)
-        self.canvas = pygame.Surface( (size, size) ).convert_alpha()
-        self.canvas.fill( (0,0,0,0) )
-        self.rect = self.canvas.get_rect()
-        pygame.draw.circle( self.canvas, (200,255,255,100), (self.rect.width//2,self.rect.height//2), self.rect.height//2 )
-        userC = getPos(self.user, 0.5, 0.5)
-        self.rect.left = userC[0] - self.rect.width//2
-        self.rect.bottom = userC[1] - self.rect.height//2
-        # 修改、替换user的相关函数。
-        self.user.dmgReducDic["physical"] = 0.35
-
-    def work(self):
-        self.duration -= 1
-        if self.duration <= 0:
-            self.user.dmgReducDic["physical"] = 1
-            self.erase()
-            return
-        # update Position.
-        pos = getPos(self.user, 0.5, 0.5)
-        self.rect.left = pos[0] - self.rect.width//2
-        self.rect.top = pos[1] - self.rect.height//2
-
-    def paint(self, surface):
-        # 效果快结束时闪烁以提示。
-        if self.duration<=100:
-            if self.duration%10 > 6:
-                return
-        surface.blit( self.canvas, self.rect )
-
-# ---------------------------
-class DefenseTower(Prop, mapManager.Porter):
-    siteWalls = []
-
-    def __init__(self, x, y, onlayer, font, lgg, user):
-        Prop.__init__(self, "defenseTower", 0, user)
-        mapManager.Porter.__init__(self, x, y, "defenseTower", 0, font, lgg)
-        self.health = self.full = 1500
-        self.onlayer = onlayer
-        self.hitFeedIndx = 0
-        self.preyList = []
-        self.checkList = pygame.sprite.Group()
-        self.lumi = 90
-        self.gravity = 0
-        self.aground = True
-        self.shootCnt = 0
-        # For NPC hero:
-        self.bar = HPBar(self.full, blockVol=30, color="orange")
-        self.snd = pygame.mixer.Sound("audio/healing.wav")
-
-    def hitted(self, damage, pushed, dmgType):
-        if self.health<=0:
-            return
-        self.health -= damage
-        if (self.health < 0):
-            self.health = 0
-            # 音效
-            pygame.mixer.Sound("audio/wizard/hit.wav").play(0)
-            return True
-        self.hitFeedIndx = 6
-
-    def recover(self, heal):
-        if self.health<=0:
-            return
-        #self.spurtCanvas.addSpatters(8, (2,3,4), (20,22,24), (10,240,10), getPos(self,0.5,0.4) )
-        self.health += heal
-        if (self.health > self.full):
-            self.health = self.full
-    
-    def freeze(self, decre):
-        return
-    
-    def infect(self):
-        return
-
-    def checkImg(self, delay, tower, heroes, key_pressed, spurtCanvas):
-        if self.health<=0:
-            spurtCanvas.addPebbles(self, 5, type="jadeDebri")
-            spurtCanvas.addSmoke(1, (3,5,7), 5, (10,10,10,240), getPos(self,0.5,random()), 2)
-            self.erase()
-            return 0
-        # 青烟效果
-        if not delay%2:
-            spurtCanvas.addSmoke(1, (2,3,5), 5, (100,255,10,200), getPos(self,0.5,0.95), 30)
-        # 发射光弹
-        if self.shootCnt>0:
-            self.shootCnt -= 1
-        else:
-            # 冷却结束，寻找目标。若未找到，则shootCnt一直为0
-            for mons in tower.monsters:
-                if mons.health>0:
-                    tracker = mapManager.Tracker("defenseLight", getPos(self,0.5,0.1), mons, (255,250,90,240), 40)
-                    tracker.shooter = self
-                    self.snd.play(0)
-                    self.shootCnt = 42    # 发射完成，重置冷却时间
-                    tower.allElements["mons2"].add( tracker )
-                    break
-        # 其他需要处理的
-        if self.hitFeedIndx>0:
-            self.hitFeedIndx -= 1
-        return 0
-
-    def drawHeads(self, screen):
-        # 画HP
-        if self.hitFeedIndx:
-            self.bar.setColor("yellow")
-        else:
-            self.bar.setColor("orange")
-        self.bar.paint(self, screen)
-
-    def lift(self, dist):
-        self.rect.bottom += dist
-    
-    def level(self, dist):
-        self.rect.left += dist
 
 # =========================================================
-# ---- 脚本hero。冒险模式下的人质跟班、训练营的训英雄练师 ----
+# -------- 脚本hero。冒险模式下的被救者跟班、侍从 -----------
 # =========================================================
 class Follower(Hero):
     master = None
     secFlag = False
 
-    def __init__(self, pos, VHero, master, fnt, lgg):
-        Hero.__init__(self, VHero, master.dmgReducDic["basic"], fnt, lgg)
-        self.master = master
-        self.keyDic = self.master.keyDic
-        self.onlayer = master.onlayer
+    def __init__(self, pos, VHero, fnt, lgg):
+        Hero.__init__(self, VHero, 1, fnt, lgg, cate="follower")
         self.secFlag = False
         self.rect.left = pos[0]
         self.rect.bottom = pos[1]
-        self.category = "follower"
+        self.shootR = 0.6   # 射击点纵向位置
 
-    def decideAction(self, delay, heightList, monsters, exit):
+    def activate(self, master, tower):
+        self.master = master
+        self.keyDic = master.keyDic
+        self.onlayer = master.onlayer
+        self.dmgReducDic["basic"] = master.dmgReducDic["basic"]
+        # RENEW CHECKLIST
+        self.renewCheckList(tower.groupList["0"], clear=True)
+        self.renewCheckList(tower.chestList)
+        self.renewCheckList(tower.elemList)
+
+    def decideAction(self, delay, tower, spurtCanvas):
         # 判断是否抵达最终出口。
-        if exit.category=="exit" and not exit.locked and collide_mask(self, exit):
+        if tower.porter.category=="exit" and (not tower.porter.locked) and collide_mask(self,tower.porter):
             return True
         # 判断是否需要二段跳。
         if ( self.secFlag ) and ( self.k1==self.kNum) and self.k2==0:
             self.secFlag = False
             self.k2 = 1
-        # 判断是否要砍怪
-        for each in monsters:
-            if collide_mask(self, each):
-                pass
-                #self.whip()
+        # 判断是否要射击
+        if (not delay%30):
+            # 与任意怪物重合时
+            if pygame.sprite.spritecollide(self, tower.monsters, False, collide_mask):
+                self.shoot(tower, spurtCanvas)
+            # 未重合,检查攻击范围内
+            else:
+                for mons in tower.monsters:
+                    shootPos = getPos(self, 0.5,self.shootR)
+                    rvPos = getPos(mons, 0.5,0)
+                    # 判断是否要shoot: mons在shoot的攻击范围内。
+                    if ( mons.rect.bottom > shootPos[1] > mons.rect.top ):
+                        if ( rvPos[0] > self.rect.right ) and self.status=="left":
+                            self.status = "right"
+                        elif ( rvPos[0] < self.rect.left ) and self.status=="right":
+                            self.status = "left"
+                        else:
+                            self.shoot(tower, spurtCanvas)
         # 如果在master之上，则下跳一层。
         if self.onlayer>self.master.onlayer:
             if not delay%80:
-                self.shiftLayer(-2, heightList)
+                self.shiftLayer(-2, tower.heightList)
                 self.aground = False
         else:
             # 否则若处于同一层或在master之下，则跳跃，并将二段跳的标志设为true。
@@ -2268,7 +1527,6 @@ class Follower(Hero):
         if self.speed == self.oriSpd:
             self.speed = self.oriSpd - decre
 
-# =========================================
 class Servant(Hero):
     # some properties of Servant
     talk = []          # Pair: [txt, cnt]
@@ -2278,13 +1536,12 @@ class Servant(Hero):
 
     def __init__(self, master, VHero, pos, font, lgg, onlayer):
         #                     basic dmgReduction
-        Hero.__init__(self, VHero, 0.7, font, lgg, keyDic=master.keyDic)
+        Hero.__init__(self, VHero, 0.7, font, lgg, keyDic=master.keyDic, cate="servant")
         self.master = master
         self.rival = None
         self.secFlag = False
         self.onlayer = onlayer        # indicate which layer hero is. only can be even number
         self.shootR = 0.6   # 射击点纵向位置
-        self.category = "servant"
         self.nxtMove = ""
         self.hunt_lost = self.hunt_lost_full = 360    # 减为0时，表示当前目标丢失过久/失效，重新寻找目标
         self.interactiveList = ["specialWall"]
@@ -2445,7 +1702,7 @@ class Servant(Hero):
 
 
 # =========================================================
-# ---- 超级技能管理器。施放后此管理器同英雄一道checkImg。 ----
+# ----- 超级技能管理器。施放后此管理器同英雄一道checkImg -----
 # =========================================================
 class SuperPowerManager:
     def __init__(self, hero):
@@ -2557,7 +1814,8 @@ class SuperPowerManagerPrincess(SuperPowerManager):
         self.hitSnd = pygame.mixer.Sound("audio/princess/hit.wav")
         pygame.mixer.Sound("audio/princess/superPowerCast.wav").play(0)
         self.ori_img = load("image/princess/arrow_left.png").convert_alpha()
-        self.hitRad = 90
+        self.hitRad = 80
+        self.per_dmg = 140
 
     def run(self, delay, tower, heroes, canvas):
         # 0.5秒内连续射出6个榴弹。 create grenades.
@@ -2576,7 +1834,7 @@ class SuperPowerManagerPrincess(SuperPowerManager):
             self.caster.critR = 0
             bullet = Ammo(self.caster, pos, speed, category="bullet", bldNum=6, push=6)
             self.caster.critR = ori_critR
-            bullet.damage = 160
+            bullet.damage = self.per_dmg
             bullet.move = self.moveSP
             # Set its layer
             bullet.onlayer = self.caster.onlayer-1
@@ -2607,9 +1865,9 @@ class SuperPowerManagerPrincess(SuperPowerManager):
                     bullet.rect.left += bullet.speed[0]
                     bullet.rect.top += bullet.speed[1]
                     # deal area damage
-                    bullet.hitMonster(tower.monsters, single=False, r=self.hitRad)
+                    bullet.hitMonster(tower.monsters, single=False, r=self.hitRad, chargeSP=False)
                     canvas.addExplosion( 
-                        getPos(bullet, 0.5,0.5), self.hitRad//2, self.hitRad//4, wFade=3, dotD=(20,22,24)
+                        getPos(bullet, 0.5,0.5), self.hitRad//2, self.hitRad//5, wFade=3, dotD=(20,22,24)
                     )
                     bullet.kill()
                     del bullet
@@ -2770,6 +2028,7 @@ class SuperPowerManagerWizard(SuperPowerManager):
                     else:
                         deadInfo = False
                         self.lastTgt = lightning["tgt"]
+                        lightning["tgt"].stun(30)
                     self.caster.preyList.append( (endPos, lightning["tgt"].bldColor, 8, deadInfo, lightning["tgt"].coin, False) )  # 无暴击
         if self.lightningNum<=0 and len(self.lightningList)<=0:
             # 解绑，并删除自身
@@ -2818,6 +2077,7 @@ class SuperPowerManagerHuntress(SuperPowerManager):
         self.shadList = []
         self.rectList = []
         self.rotated = 0
+        self.damage = 80
     
     def run(self, delay, tower, heroes, canvas):
         canvas.addTrails( [1,2,3], [22,24,28], (250,240,0,0), getPos(self.boomerang,0.5,random()) )
@@ -2857,11 +2117,13 @@ class SuperPowerManagerHuntress(SuperPowerManager):
             for m in tower.monsters:
                 if collide_mask(self.boomerang, m):
                     self.hitSnd.play(0)
-                    if m.hitted(80, self.boomerang.speed[0], "physical")==True:
+                    if m.hitted(self.damage, self.boomerang.speed[0], "physical")==True:
                         deadInfo = m.category
                     else:
                         deadInfo = False
+                        m.stun(30)
                     self.caster.preyList.append( (getPos(m, 0.5,0.5), m.bldColor, 8, deadInfo, m.coin, False) )  # 无暴击
+                    #self.caster.chargeSuperPower(self.damage)
         if self.covering>=self.cover:
             self.boomerang.kill()
             canvas.addSpatters(8, [3,5,7], [20,22,24], (255,240,0), getPos(self.boomerang,0.5,0.5))
@@ -2891,7 +2153,7 @@ class SuperPowerManagerHuntress(SuperPowerManager):
 class SuperPowerManagerPriest(SuperPowerManager):
     def __init__(self, hero):
         SuperPowerManager.__init__(self, hero)
-        self.per_heal = 140     # 每次回复的量
+        self.per_heal = 80      # 每次回复的量
         self.healCnt = 3        # 快速回复3次
         self.healRad = 260      # 治疗半径（实际计算距离，与显示的圆圈大小无关）
         pygame.mixer.Sound("audio/knight/superPowerCast.wav").play(0)
@@ -2971,6 +2233,12 @@ class SuperPowerManagerKing(SuperPowerManager):
     def __init__(self, hero):
         SuperPowerManager.__init__(self, hero)
         pygame.mixer.Sound("audio/knight/superPowerCast.wav").play(0)
+        # if king already has one servant, kill her
+        if self.caster.serv:
+            while self.caster.serv.health>0:
+                self.caster.serv.hitted(self.caster.serv.full, 0, "physical")
+            self.caster.serv.kill()
+            self.caster.serv = None
         # 前摇的动画
         self.ani_ball = pygame.sprite.Sprite()
         self.ani_ball.image = pygame.image.load("image/stg0/defenseLight.png")
@@ -2986,7 +2254,7 @@ class SuperPowerManagerKing(SuperPowerManager):
             canvas.addTrails([6],[5],(250,240,0),getPos(self.ani_ball,0.5,0.5))
             # 下落
             if not delay%4:
-                self.ani_ball.speed = min(self.ani_ball.speed+1, 4)
+                self.ani_ball.speed = min(self.ani_ball.speed+1, 5)
             # 判断层数下落
             if self.ani_ball.rect.top>=tower.heightList[str(self.ani_ball.onlayer)]:
                 self.ani_ball.onlayer = max(self.ani_ball.onlayer-2, -1)
@@ -3000,6 +2268,7 @@ class SuperPowerManagerKing(SuperPowerManager):
             servant.jmpSnd.play(0)      #登场音效
             canvas.addSpatters(8, [3,5,7], [28,32,36], (250,240,0), getPos(servant,0.5,0.5), False)
             heroes.append(servant)
+            self.caster.serv = servant
             self.caster.superPowerManager = None
             return
 

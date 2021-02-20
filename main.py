@@ -1,97 +1,93 @@
 # Knight_Throde
-# main.py
-import sys, os
-import psutil
-import traceback
+"""
+main.py:
+Entrance of the whole game, runs the main menu of the game.
+Control the actions of program beginning and ending.
+Manage all UIs, menu pages such as settings, herobooks, chapter choosing page, etc.
+They are all organized in a class called God.
+"""
+import sys, os, traceback
+#import psutil
 import time
-from random import *
+from random import randint, choice
 import pygame
 from pygame.locals import *
 import pickle
 
-from database import REC_DATA   # 载入module的同时则会读取本地record.data
+from database import REC_DATA   # 载入这一module的同时则会读取本地./record.sav
 import model
-import mapManager
+from mapElems import Coin
+from canvas import SpurtCanvas, Nature
 import plotManager
 from util import ImgButton, TextButton, RichButton, Panel, MsgManager, ImgSwitcher, TextBox, RichText
 
-# ======================================================
-# NOTE:All sprites in this game would at least have the following properties:
-# image, rect, mask, category, imgLib, direction...
-# category indicates the name or class of the sprite
-# ============================================================================================
-# ============================================================================================
-# ============================================================================================
-bg_size = width, height = 1080,720  #或1280*800(均为16:10)
 
+# ======================================================================
+bg_size = width, height = 1280, 720  #或1280*800(均为16:10)
+PLATFORM = "steam"   # "self" or "steam". Treat differently on account.
+
+
+# ======================================================================
 class God():
-    '''Yes, this god. All starts here, and ends here. I controll and give birth to everything in the game hahahahah.'''
 
     def __init__(self):
         '''====initialize window, screen and read records.======'''
         pygame.init()
         pygame.mouse.set_cursor(*pygame.cursors.tri_left)        # arrow(default), diamond, broken_x, tri_left, tri_right
         # Check display mode
-        if REC_DATA["SYS_SET"]["DISPLAY"]==0:
-            self.screen = pygame.display.set_mode( (bg_size) )
-        elif REC_DATA["SYS_SET"]["DISPLAY"]==1:
-            self.screen = pygame.display.set_mode( (bg_size), FULLSCREEN|HWSURFACE )
+        self.setDisplay()
         pygame.display.set_caption(f"Knight Throde {plotManager.VERSION.split('_')[-1]}")
 
         '''====font set========'''
-        self.fntSet = [ ( pygame.font.Font("font/ebangkok.ttf", 12), pygame.font.Font("font/cHeiti.ttf", 12) ), 
-            ( pygame.font.Font("font/ebangkok.ttf", 16), pygame.font.Font("font/cHeiti.ttf", 16) ), 
+        self.fntSet = [ ( pygame.font.Font("font/ebangkok.ttf", 14), pygame.font.Font("font/cHeiti.ttf", 14) ), 
+            ( pygame.font.Font("font/ebangkok.ttf", 18), pygame.font.Font("font/cHeiti.ttf", 18) ), 
             ( pygame.font.Font("font/ebangkok.ttf", 24), pygame.font.Font("font/cHeiti.ttf", 24) ), 
             ( pygame.font.Font("font/ebangkok.ttf", 32), pygame.font.Font("font/cHeiti.ttf", 32) ) ]
         # music and sound -----------------------------------------------
         self.soundList = [ pygame.mixer.Sound("audio/victoryHorn.wav"), pygame.mixer.Sound("audio/gameOver.wav"), pygame.mixer.Sound("audio/click.wav") ]
         # 返回按钮 & 界面选项等控件 --------------------------------------
         self.mainTitle = [ pygame.image.load("image/titleE.png").convert_alpha(), pygame.image.load("image/titleC.png").convert_alpha() ]
-        self.mainTitle_bot = []
-        for each in self.mainTitle:
-            bot = each.copy()
-            bot.lock()
-            for x in range(bot.get_width()):
-                for y in range(bot.get_height()):
-                    if bot.get_at((x,y))[3]>0:
-                        bot.set_at((x,y),(255,255,255,180))
-            bot.unlock()
-            self.mainTitle_bot.append(bot)
 
         self.embed = bg_size[0]         # 向左嵌入部分的横坐标，初始为屏幕横长，表示全部在屏幕外
-        self.embedFinal = round(bg_size[0]*0.42)
+        self.embedFinal = round(bg_size[0]*0.45)
         self.embedSpd = 6               # 左右滑动的比例系数，作分母，越小越快
 
         # 初始化游戏的数据和管理对象
         self.initGameData()
 
-        # 检查账号登录状态
-        if REC_DATA["GAME_ID"]==1:
-            # 本地记录为1（默认初始ID），即未登陆
-            self.page = "login"         # 进入登录/注册/游客页
-        else:
-            # ID值不为1，则之前已登陆，可直接登陆
-            self.page = "index"         # 可取7个值：index, stgChoosing, collection, heroBook, settings, bazaar, login
-            self.setManager.transmitFile(op="download")   # 访问服务器，并下载.rec写入到本地
+        if PLATFORM=="self":
+            # 检查账号登录状态
+            if REC_DATA["GAME_ID"]==1:
+                # 本地记录为1（默认初始ID），即未登陆
+                self.page = "login"         # 进入登录/注册/游客页
+            else:
+                # ID值不为1，则之前已登陆，可直接登陆
+                self.page = "index"         # 可取7个值：index, stgChoosing, collection, heroBook, settings, bazaar, login
+                self.setManager.transmitFile(op="download")   # 访问服务器，并下载.rec写入到本地
+        elif PLATFORM=="steam":
+            # steam 平台不需要程序自己管理账号
+            self.page = "index"
         
-        self.backPosY = 56      # 返回按钮的纵坐标
-        self.nature = None          # 关卡的特殊自然装饰（雨雪等）
-        self.setNature( self.collection.paperEffect[self.collection.activePaper] )
-        self.spurtCanvas = mapManager.SpurtCanvas(bg_size)
+        self.backPosY = 56      # 返回按钮的纵坐标 
+        self.setNature( self.setManager.paperList[REC_DATA["SYS_SET"]["PAPERNO"]]["e"] )    # 关卡的特殊自然装饰（雨雪等）
+        self.spurtCanvas = SpurtCanvas(bg_size)
     
     def initGameData(self):
         # 三大用户交互管理助手
-        self.tbManager = plotManager.TextBoxManager(self.fntSet[1])
-        self.tbManager.add_text_box( "username", (200,24), (width//2-100,height//2-45), self.fntSet[1][1],
-                                    label=("Username: ","用户名："), descript=("No more than 12 characters.","不得多于12个字符。") )
-        self.tbManager.add_text_box( "password", (200,24), (width//2-100,height//2+15), self.fntSet[1][1],
-                                    label=("Password: ","密码："), descript=("Must be 6 to 12 characters.","须为6至12个字符。") )
+        if PLATFORM=="self":
+            self.tbManager = plotManager.TextBoxManager(self.fntSet[1])
+            self.tbManager.add_text_box( "username", (200,24), (width//2-100,height//2-45), self.fntSet[1][1],
+                                        label=("Username: ","用户名："), descript=("No more than 12 characters.","不得多于12个字符。") )
+            self.tbManager.add_text_box( "password", (200,24), (width//2-100,height//2+15), self.fntSet[1][1],
+                                        label=("Password: ","密码："), descript=("Must be 6 to 12 characters.","须为6至12个字符。") )
+        elif PLATFORM=="steam":
+            pass
 
         self.imgSwitcher = ImgSwitcher()
         self.msgManager = MsgManager(self.fntSet[1], 1)  # stg=1
         # ===============================================================
         # =========== 宏观关卡信息、英雄书、图鉴、设置管理大类 =============
-        self.setManager = plotManager.Settings( bg_size[0]-self.embedFinal-12, bg_size[1]-140, self.fntSet[2] )
+        self.setManager = plotManager.Settings( bg_size[0]-self.embedFinal-20, bg_size[1]-180, self.fntSet[2], platf=PLATFORM )
         if self.setManager.updateFlag==0:
             self.msgManager.alert("update")
         elif self.setManager.updateFlag==-1:
@@ -101,7 +97,7 @@ class God():
         self.heroBook = plotManager.HeroBook(bg_size[0]-self.embedFinal, bg_size[1]-120, self.fntSet[1])
         model.GameModel.VServant = self.heroBook.servantVHero    # Set the gamemodel's VServant.
         self.collection = plotManager.Collection(
-                            bg_size[0]-self.embedFinal-10, bg_size[1]-140, self.stgManager.nameList, self.fntSet[1]
+                            bg_size[0]-self.embedFinal-20, bg_size[1]-190, self.stgManager.nameList, self.fntSet[1]
                         )
         # Bazaar ========================================================
         self.bazaar = plotManager.Bazaar(bg_size[0]-self.embedFinal-12, bg_size[1]-140, self.fntSet)
@@ -109,12 +105,21 @@ class God():
         self.curStg = REC_DATA["SYS_SET"]["STG_STOP"]    # 当前关卡标记，默认为1
         self.choosable = self.stgManager.checkChoosable(self.curStg)
         # Account & ID part =============================================
-        self.accPanel = Panel(180, 115, self.fntSet[1], title=("Personal Account","个人账号"))
-        self.accPanel.addItem( (f"Game ID: {REC_DATA['GAME_ID']}",f"游戏ID：{REC_DATA['GAME_ID']}") )
-        self.accPanel.addItem( (f"Total Level: {self.heroBook.total_level}",f"英雄总等级：{self.heroBook.total_level}") )
-        self.accPanel.addItem( TextButton(160, 30,
-                    {"default":("Log Out","退出登录")}, "default", self.fntSet[1], rgba=(140,10,10,210)) 
-                )
+        self.accPanel = Panel(180, 150, self.fntSet[1], title=("Personal Account","个人账号"))
+        if PLATFORM=="self":
+            self.accPanel.addItem( (f"Game ID: {REC_DATA['GAME_ID']}",f"游戏ID：{REC_DATA['GAME_ID']}") )
+            self.accPanel.addItem( (f"Total Level: {self.heroBook.total_level}",f"英雄总等级：{self.heroBook.total_level}") )
+            self.accPanel.addItem( TextButton(160, 30,
+                        {"default":("Reset Password","修改密码")}, "default", self.fntSet[1], rgba=(40,140,40,210)), tag="set_pwd"
+                    )
+            self.accPanel.addItem( TextButton(160, 30,
+                        {"default":("Log Out","退出登录")}, "default", self.fntSet[1], rgba=(140,40,40,210)), tag="log_out"
+                    )
+            self.operat = "login"
+        else:
+            self.accPanel.addItem( (f"Total Level: {self.heroBook.total_level}",f"英雄总等级：{self.heroBook.total_level}") )
+
+        self.shiftChapter(0)
     
     def go(self):
         clock = pygame.time.Clock()
@@ -127,91 +132,99 @@ class God():
                         {1:("Chapters","选择章节")}, 1, self.fntSet[2]
                     ),
             # -- 左侧菜单选项
-            "left1": RichButton(100, 100, pygame.image.load("image/menu1.png").convert_alpha(), 
-                        {1:("Album","图鉴")}, 1, self.fntSet[1]
+            "left1": RichButton(160, 70, pygame.image.load("image/menu1.png").convert_alpha(), 
+                        {1:("Album","图鉴")}, 1, self.fntSet[1], align='horizontal'
                     ),
-            "left2": RichButton(100, 100, pygame.image.load("image/menu2.png").convert_alpha(), 
-                        {1:("Heroes","英雄书")}, 1, self.fntSet[1]
+            "left2": RichButton(160, 70, pygame.image.load("image/menu2.png").convert_alpha(), 
+                        {1:("Heroes","英雄书")}, 1, self.fntSet[1], align='horizontal'
                     ),
-            "left3": RichButton(100, 100, pygame.image.load("image/menu3.png").convert_alpha(), 
-                        {1:("Settings","综合设置")}, 1, self.fntSet[1]
+            "left3": RichButton(160, 70, pygame.image.load("image/menu3.png").convert_alpha(), 
+                        {1:("Settings","综合设置")}, 1, self.fntSet[1], align='horizontal'
                     ),
-            "left4": RichButton(100, 100, pygame.image.load("image/menu4.png").convert_alpha(), 
-                        {1:("Bazaar","市集")}, 1, self.fntSet[1]
+            "left4": RichButton(160, 70, pygame.image.load("image/menu4.png").convert_alpha(), 
+                        {1:("Bazaar","市集")}, 1, self.fntSet[1], align='horizontal'
                     ),
-            # -- 其他界面按钮
-            "account": plotManager.AccountButton( self.fntSet[1] )
         }
-        
-        # Login界面所需按钮
-        self.registerButton = TextButton( 160, 40, {1:("Register","注册")}, 1, self.fntSet[2], rgba=(20,20,60,210) )
-        self.loginButton = TextButton(160, 40, {1:("Log in","登录")}, 1, self.fntSet[2], rgba=(20,60,20,210) )
+
+        if PLATFORM=="self":
+            self.indexButtons["account"] = plotManager.AccountButton( self.fntSet[1], mode="all" )
+            # Login界面所需按钮
+            self.registerButton = TextButton( 160, 40, {"log":("Register","注册"), "reset":("Cancel","取消")}, 
+                "log", self.fntSet[2], rgba=(40,40,120,210) )
+            self.loginButton = TextButton(160, 40, {"log":("Log in","登录"), "reset":("Confirm","确认")}, 
+                "log", self.fntSet[2], rgba=(40,120,40,210) )
+        else:
+            self.indexButtons["account"] = plotManager.AccountButton( self.fntSet[1], mode="no_name" )
         # 主界面是否展开账户栏
         accShow = False
+        
         self.gemList = pygame.sprite.Group()
         
         self.imgButtons = {
-            "back": ImgButton( {"default":pygame.image.load("image/back.png").convert_alpha()}, "default", self.fntSet[1], labelPos="top" ),
-            "quit": ImgButton( {"default":pygame.image.load("image/quit.png").convert_alpha()}, "default", self.fntSet[1], labelPos="btm" ),
-            "switch": ImgButton( {"default":pygame.image.load("image/switch.png").convert_alpha()}, "default", self.fntSet[1], labelPos="top" )
+            "back": ImgButton( {"default":pygame.image.load("image/back.png").convert_alpha()}, "default", self.fntSet[0], labelPos="top" ),
+            "quit": ImgButton( {"default":pygame.image.load("image/quit.png").convert_alpha()}, "default", self.fntSet[0], labelPos="btm" ),
+            "switch": ImgButton( {"default":pygame.image.load("image/switch.png").convert_alpha()}, "default", self.fntSet[0], labelPos="top" ),
+            "practice": ImgButton( {"default":pygame.image.load("image/camp.png").convert_alpha()}, "default", self.fntSet[0], labelPos="top" )
         }
         self.slide_status = ""
 
         while True:
 
             if not pygame.mixer.music.get_busy():
-                pygame.mixer.music.load("audio/story.wav")  # Play bgm
+                pygame.mixer.music.load("audio/stg7BG.wav")  # Play bgm
                 pygame.mixer.music.set_volume(REC_DATA["SYS_SET"]["VOL"]/100)
                 pygame.mixer.music.play(loops=-1)
             
             # wall paper
-            self.addSymm(self.collection.paperList[self.collection.activePaper], 0, 0)
+            self.addSymm(self.setManager.paperList[REC_DATA["SYS_SET"]["PAPERNO"]]["p"], 0, 0)
             # 上下页眉页脚
-            self.drawRect( 0, 0, bg_size[0], 60, self.stgManager.themeColor[0] )
+            #self.drawRect( 0, 0, bg_size[0], 60, self.stgManager.themeColor[0] )
             self.drawRect( 0, bg_size[1]-60, bg_size[0], 60, self.stgManager.themeColor[0] )
             ctrX = self.embed//2-bg_size[0]//2
             # Game Name Title
-            self.addSymm(self.mainTitle_bot[REC_DATA["SYS_SET"]["LGG"]], ctrX, -240 )
-            self.addSymm(self.mainTitle[REC_DATA["SYS_SET"]["LGG"]], ctrX, -240 )
+            self.addSymm(self.mainTitle[REC_DATA["SYS_SET"]["LGG"]], ctrX, -230 )
 
             pos = pygame.mouse.get_pos()
             
-            # ==================================================
-            # =================== 菜单界面 ======================
+            # Account Panel
+            self.indexButtons["account"].paint(self.screen, width//2-540, height//2-330, pos)
+
+            # =================================================
+            # =================== 菜单界面 =====================
             if ( self.page == "index" ):
                 if self.slide_status!="":
                     self.slide_status = ""
-                # 右侧选项img
+                
                 self.imgButtons["quit"].paint( self.screen, self.embed-45, 30, pos )
 
                 for label in self.indexButtons:
                     if label=="advt":
-                        self.indexButtons["advt"].paint(self.screen, width//2+440, height//2+210, pos)
+                        self.indexButtons["advt"].paint(self.screen, width//2+540, height//2+210, pos)
                         if self.indexButtons[label].hover_on(pos):
                             self.addTXT( ("Explore various towers and rescue those trapped heroes!","探索不同的地图，营救困在其中的英雄！"), self.fntSet[1], 0, 0.925 )
                             self.addTXT( ("Or defend the King's statue as long as you can!","或保卫国王石像，挑战你的极限能力！"), self.fntSet[1], 0, 0.955 )
                     elif label=="left1":
-                        self.indexButtons["left1"].paint(self.screen, width//2-470, height//2+10, pos)
+                        self.indexButtons["left1"].paint(self.screen, width//2-540, height//2+20, pos)
                         if self.indexButtons[label].hover_on(pos):
                             self.addTXT( ("Check the monsters you have met.","查看你所收集的所有怪物信息。"), self.fntSet[1], 0, 0.93 )
                     elif label=="left2":
-                        self.indexButtons["left2"].paint(self.screen, width//2-470, height//2+120, pos)
+                        self.indexButtons["left2"].paint(self.screen, width//2-540, height//2+95, pos)
                         if self.indexButtons[label].hover_on(pos):
                             self.addTXT( ("Check or change the hero embatled.","查看英雄信息或更换出战英雄。"), self.fntSet[1], 0, 0.93 )
                     elif label=="left3":
-                        self.indexButtons["left3"].paint(self.screen, width//2-470, height//2+230, pos)
+                        self.indexButtons["left3"].paint(self.screen, width//2-540, height//2+170, pos)
                         if self.indexButtons[label].hover_on(pos):
                             self.addTXT( ("Key settings, systematic settings, version update and other contents.","系统设置，游戏键位修改，以及版本更新等内容。"), self.fntSet[1], 0, 0.93 )
                     elif label=="left4":
-                        self.indexButtons["left4"].paint(self.screen, width//2-360, height//2+230, pos)
+                        self.indexButtons["left4"].paint(self.screen, width//2-540, height//2+245, pos)
                         if self.indexButtons[label].hover_on(pos):
                             self.addTXT( ("Purchase Runestones to enhence your ability in the battle.","购买符石，增强你在战斗中的力量。"), self.fntSet[1], 0, 0.93 )
                     elif label=="account":
-                        self.indexButtons["account"].paint(self.screen, width//2-440, height//2-330, pos)
                         if self.indexButtons[label].hover_on(pos) and REC_DATA["GAME_ID"]==1:
                             self.addTXT( ("Click to log in or register an account, which is necessary to save your records online.","点击登录或注册一个游戏账号，游戏账号能够联网保存你的游戏进度。"), self.fntSet[1], 0, 0.93 )
+                
                 if accShow:
-                    logout = self.accPanel.paint(self.screen, 100,125, pos)
+                    acc_on = self.accPanel.paint(self.screen, 100,145, pos)
                 
                 if self.imgButtons["quit"].hover_on(pos):
                     self.addTXT( ("Save and quit the game.","保存并退出游戏。"), self.fntSet[1], 0, 0.93 )
@@ -238,9 +251,11 @@ class God():
                         break
                 # 显示章节剧情进度
                 but = self.indexButtons["advt"].rect
-                cpComp = [1 if star>=0 else 0 for star in REC_DATA["CHAPTER_REC"]]
-                self.addTXT( (f"Chapters Passed: {sum(cpComp)}/{len(REC_DATA['CHAPTER_REC'])}", f"章节完成：{sum(cpComp)}/{len(REC_DATA['CHAPTER_REC'])}"), 
-                    self.fntSet[1], but.left+but.width//2-bg_size[0]//2, 0.655 )
+                # only count those chapters have been passed at any difficulty
+                cpComp = [1 if star>0 else 0 for star in REC_DATA["CHAPTER_REC"]]
+                cpTot = len(REC_DATA['CHAPTER_REC'])
+                self.addTXT( (f"Completed: {sum(cpComp)}/{cpTot}", f"已完成章节：{sum(cpComp)}/{cpTot}"), 
+                    self.fntSet[0], but.left+but.width//2-bg_size[0]//2, 0.656 )
 
                 # handle the key events
                 for event in pygame.event.get():  # 必不可少的部分，否则事件响应会崩溃
@@ -251,7 +266,7 @@ class God():
                         pass
                     elif ( event.type == pygame.MOUSEBUTTONUP ): 
                         self.soundList[2].play(0)
-                        if accShow and not logout:
+                        if accShow and not acc_on:
                             accShow = False
                         if self.indexButtons["advt"].hover_on(pos):
                             if REC_DATA["SYS_SET"]["MOD_STOP"]==0:
@@ -279,41 +294,57 @@ class God():
                             gems = self.bazaar.update_task()
                             if gems:
                                 self.addGems(gems, (self.bazaar.taskPanel.rect.left, self.bazaar.taskPanel.rect.bottom), self.indexButtons["account"] )
-                            self.indexButtons["account"].reset()
-                        elif self.indexButtons["account"].hover_on(pos):
-                            if REC_DATA["GAME_ID"] == 1:  # 开始登陆
-                                self.page = "login"
-                            else:       # 退出登陆
-                                accShow = True
-                                self.heroBook.update_total_level()
                         elif self.imgButtons["quit"].hover_on(pos):
                             #self.setManager.qList.append("shutDown#")
                             pygame.quit()
                             sys.exit()
-                        elif accShow and logout:    # 退出登陆
-                            self.setManager.logout()
-                            self.initGameData()
-                            self.indexButtons["account"].reset()
-                            accShow = False
-                    elif ( event.type == pygame.VIDEORESIZE ):
-                        pass
-                        #bg_size = width, height = event.size[0], event.size[1]  # 获取新的size
-                        #self.screen = pygame.display.set_mode( bg_size, RESIZABLE)
-            # ==================================================
+                        elif PLATFORM=="self":
+                            # 自平台账号相关操作
+                            if self.indexButtons["account"].hover_on(pos):
+                                if REC_DATA["GAME_ID"] == 1:  # 开始登陆
+                                    self.page = "login"
+                                else:       # 退出登陆
+                                    accShow = True
+                                    self.heroBook.update_total_level()
+                            elif accShow and acc_on:    # 退出登陆
+                                if acc_on.tag=="set_pwd":
+                                    self.registerButton.draw_text(label_key="reset")
+                                    self.loginButton.draw_text(label_key="reset")
+                                    self.operat = "reset_pwd"
+                                    self.page = "login"
+                                elif acc_on.tag=="log_out":
+                                    self.setManager.logout()
+                                    self.registerButton.draw_text(label_key="log")
+                                    self.loginButton.draw_text(label_key="log")
+                                    self.operat = "login"
+                                    self.initGameData()
+                                    self.indexButtons["account"].reset()
+                                    accShow = False
+                        else:
+                            # steam版账号相关操作
+                            if self.indexButtons["account"].hover_on(pos):
+                                accShow = True
+                                self.heroBook.update_total_level()
+            # =================================================
             # =================== 选关界面 =====================
             elif ( self.page == "stgChoosing" ):
 
                 if REC_DATA["SYS_SET"]["MOD_STOP"]==0:
-                    mid = self.paint_right_panel(pos, self.curStg, banner=True, title=("Adventure Mode","冒险模式"))
+                    mid = self.paint_right_panel(pos, self.curStg, title=("Adventure Mode","冒险模式"))
                 elif REC_DATA["SYS_SET"]["MOD_STOP"]==1:
-                    mid = self.paint_right_panel(pos, 0, banner=True, title=("Endless Mode","无尽模式"))
+                    mid = self.paint_right_panel(pos, 0, title=("Endless Mode","无尽模式"))
                 
                 if self.slide_status=="" or self.slide_status=="in":
                     
                     self.imgButtons["switch"].paint(self.screen, self.embed+120, self.backPosY,
                                                     pos, label=("Change Mode","切换模式") )    # 切换箭头
+                    self.imgButtons["practice"].paint(self.screen, self.embed+640, self.backPosY,
+                                                    pos, label=("Practice","训练营") )      # training camp
+                    if REC_DATA["SYS_SET"]["TUTOR"]==1: # 建议教程
+                        img_rec = self.imgButtons["practice"].rect
+                        pygame.draw.circle( self.screen, (255,0,0), (img_rec.right,img_rec.top), 7, 0 )
 
-                    if REC_DATA["SYS_SET"]["MOD_STOP"] == 0:
+                    if REC_DATA["SYS_SET"]["MOD_STOP"]==0:
                         if self.stgManager.diffi==2:    # 冒险英雄难度深色
                             self.drawRect( self.embed+15, 75, max(bg_size[0]-self.embed-30, 0), bg_size[1]-150, (0,0,0,45) )
                         elif self.stgManager.diffi==0:
@@ -329,28 +360,32 @@ class God():
                         if len(self.imgSwitcher.SSList)==0:
                             # 左
                             if not (self.curStg == 1):
-                                leftC = self.addSymm(self.stgManager.coverAbb[self.curStg-2], mid-140, 60 )
+                                leftC = self.addSymm(self.stgManager.coverAbb[self.curStg-2], mid-140, 0 )
                                 if ( leftC.left < pos[0] < leftC.right ) and ( leftC.top < pos[1] < leftC.bottom ):
                                     self.drawRect( leftC.left, leftC.top, leftC.width, leftC.height, (255,255,255,60) )
                                 pygame.draw.rect( self.screen, (20,20,20), leftC, 1 )
                             # 右
                             if not ( self.curStg == len(self.stgManager.nameList) ):
-                                rightC = self.addSymm(self.stgManager.coverAbb[self.curStg], mid+140, 60 )
+                                rightC = self.addSymm(self.stgManager.coverAbb[self.curStg], mid+140, 0 )
                                 if ( rightC.left < pos[0] < rightC.right ) and ( rightC.top < pos[1] < rightC.bottom ):
                                     self.drawRect( rightC.left, rightC.top, rightC.width, rightC.height, (255,255,255,60) )
                                 pygame.draw.rect( self.screen, (20,20,20), rightC, 1 )
                             # 中
                             coverRect = self.drawCover(self.stgManager.coverList[self.curStg-1], self.stgManager.nameList[self.curStg-1], pos, mid, edge)
-                            # 其他呈现的信息
+                            # draw 3 stars
                             if self.choosable:
-                                for i in range(0,3):
+                                for i in range(1,4):
                                     if i <= REC_DATA["CHAPTER_REC"][self.curStg-1]:
-                                        self.addSymm(self.stgManager.starImg, 190+i*36, -220 )
+                                        self.addSymm(self.stgManager.starImg, mid+(i-2)*36, -220 )
                                     else:
-                                        self.addSymm(self.stgManager.starVoid, 190+i*36, -220 )
+                                        self.addSymm(self.stgManager.starVoid, mid+(i-2)*36, -220 )
                                 # 下方章节介绍
                                 self.addTXT( self.stgManager.infoList[self.curStg][0], self.fntSet[1], mid, 0.925 )
                                 self.addTXT( self.stgManager.infoList[self.curStg][1], self.fntSet[1], mid, 0.955 )
+                            # UNLOCK BUTTON: if its previous chapter is unlocked, this chapter can be purchased with gems
+                            if self.unlockBut:
+                                self.stgManager.unlock_button.paint(self.screen, width//2+mid+60, 480, pos)
+                                self.stgManager.unlock_guide.paint(self.screen, width//2+mid-60, 480)
                         # 章节设置面板
                         in_but = self.stgManager.panel.paint(self.screen, self.embed-95, 320, pos)
                         # mission task
@@ -375,6 +410,7 @@ class God():
                             # 下方章节介绍
                             self.addTXT( self.stgManager.infoList[0][0], self.fntSet[1], mid, 0.925 )
                             self.addTXT( self.stgManager.infoList[0][1], self.fntSet[1], mid, 0.955 )
+                        # Currently endless mode cannot be purchased!
                         # 挑战设置面板
                         in_but = self.stgManager.panelEndless.paint(self.screen, self.embed-95, 320, pos)
                         # mission task
@@ -382,7 +418,7 @@ class God():
                         self.addTXT(self.stgManager.aimList[0], self.fntSet[1], mid+145, 0.75, rgb=(255,255,255))
                     
                     # 英雄书设置
-                    hr_but = self.heroBook.panel.paint(self.screen, self.embed-95, 500, pos)
+                    hr_but = self.heroBook.panel.paint(self.screen, self.embed-95, 460, pos)
 
                     # 符石使用
                     self.stgManager.voidStone.paint(self.screen, r2.right-40, r2.bottom-40, 
@@ -442,15 +478,18 @@ class God():
                                                 self.stgManager.panel.updateButton(but_tag="P1P2", label_key=self.stgManager.P2in)
                                             else:
                                                 self.msgManager.alert("false2P")
-                                        elif in_but.tag=="tutor":
-                                            REC_DATA["SYS_SET"]["TUTOR"] = (REC_DATA["SYS_SET"]["TUTOR"]+1) % 2
-                                            # 更新按钮文字
-                                            self.stgManager.panel.updateButton(but_tag="tutor", label_key=REC_DATA["SYS_SET"]["TUTOR"])
                                     else:
                                         if leftC and ( leftC.left < pos[0] < leftC.right ) and ( leftC.top < pos[1] < leftC.bottom ):
                                             self.shiftChapter(-1, coverRect, leftC, rightC)
                                         elif rightC and ( rightC.left < pos[0] < rightC.right ) and ( rightC.top < pos[1] < rightC.bottom ):
                                             self.shiftChapter(+1, coverRect, leftC, rightC)
+                                        elif self.unlockBut and self.stgManager.unlock_button.hover_on(pos):
+                                            res = self.stgManager.purchaseChapter(self.curStg)
+                                            if res=="lackGem":
+                                                self.msgManager.alert("lackGem")
+                                            elif res=="OK":
+                                                self.shiftChapter(0)
+                                            break
                                 elif REC_DATA["SYS_SET"]["MOD_STOP"]==1:
                                     if in_but:
                                         self.soundList[2].play(0)
@@ -459,7 +498,7 @@ class God():
                                             self.stgManager.shiftStartChp()
                                 if self.imgButtons["back"].hover_on(pos):
                                     self.soundList[2].play(0)
-                                    self.setNature( self.collection.paperEffect[self.collection.activePaper] )
+                                    self.setNature( self.setManager.paperList[REC_DATA["SYS_SET"]["PAPERNO"]]["e"] )
                                     self.slide_status = "out"
                                 elif self.imgButtons["switch"].hover_on(pos):
                                     self.soundList[2].play(0)
@@ -470,6 +509,9 @@ class God():
                                     else:       # 从无尽切换至冒险
                                         self.setNature(self.curStg)
                                         self.choosable = self.stgManager.checkChoosable(self.curStg)
+                                elif self.imgButtons["practice"].hover_on(pos):
+                                    self.soundList[2].play(0)
+                                    self.startPractice()
                                 elif coverRect and ( coverRect.left < pos[0] < coverRect.right ) and ( coverRect.top < pos[1] < coverRect.bottom ):
                                     res = self.startChapter()       # 若章节不可进入或有任何问题，则会返回字符串消息
                                     if res:
@@ -480,49 +522,44 @@ class God():
             # ===============================================
             # ================== 图鉴收藏 ====================
             elif ( self.page == "collection" ):
-                mid = self.paint_right_panel(pos, 0)
+                mid = self.paint_right_panel(pos, 0, title=("Monster Brochure","怪物图鉴"))
                 
                 if self.slide_status=="" or self.slide_status=="in":
-                    # Print titles.
+                    # Print title labels.
                     titleList = []
                     i = 0
-                    left = mid -160 * len(self.collection.subject)//2     # 每个title160px宽。left是第一个标题的左侧。
+                    per_w, per_h = 85, 50
+                    left = mid -per_w * len(self.collection.subject)//2     # left是第一个标题的左侧。
                     for title in self.collection.subject:
                         if title == self.collection.curSub:
-                            titleList.append( self.drawRect( bg_size[0]//2+left+i*160, 20, 160, 60, (20,20,20,160) ) )
+                            bg_rect = self.drawRect( bg_size[0]//2+left+i*per_w, 80, per_w, per_h, (20,20,20,180) )
                         else:
-                            titleList.append( self.drawRect( bg_size[0]//2+left+i*160, 20, 160, 60, (0,0,0,0) ) )
-                        self.addTXT( self.collection.subject[title], self.fntSet[2], left+i*160+80, 0.04 )
-                        self.addTXT( self.collection.progress[title], self.fntSet[1], left+i*160+80, 0.08 )
+                            bg_rect = self.drawRect( bg_size[0]//2+left+i*per_w, 80, per_w, per_h, (0,0,0,0) )
+                        # 检查鼠标是否在最新加入的title rect内
+                        if ( bg_rect.left < pos[0] < bg_rect.right ) and ( bg_rect.top < pos[1] < bg_rect.bottom ):
+                            bg_rect = self.drawRect( bg_size[0]//2+left+i*per_w, 80, per_w, per_h, (120,120,120,180) )
+                        titleList.append( bg_rect )
+                        self.addTXT( self.collection.subject[title], self.fntSet[1], left+i*per_w+per_w//2, 0.12 )
+                        self.addTXT( self.collection.progress[title], self.fntSet[0], left+i*per_w+per_w//2, 0.15 )
                         i += 1
 
                     # check all cards whether chosed ---------------------------
-                    windowRect = self.addSymm(self.collection.window, mid, 10)    # 将window渲染到screen上
+                    windowRect = self.addSymm(self.collection.window, mid, 35)    # 将window渲染到screen上
                     innerPos = (pos[0]-windowRect.left, pos[1]-windowRect.top)
-                    # 怪物图鉴。
-                    if self.collection.curSub == 0:
-                        chosenCd = self.collection.renderWindow( innerPos, self.fntSet[1] )   # 内部渲染刷新，并返回内部退出纽位置
-                        
-                        # 下方说明
-                        self.addTXT( ("Values presented are under the Normal Difficulty.","显示的属性值均为“标准”难度下的数值。"), self.fntSet[1], mid, 0.925 )
-                        self.addTXT( ("For Heroic Difficulty, they get 60%HP & 50%PW more. Easy: 30Less.","对于英雄难度，它们的生命和伤害均增加50%。简单难度均减少30%。"), self.fntSet[1], mid, 0.955 )
-                        if self.collection.display:
-                            in_but = self.collection.panel.paint(self.screen, self.embed-95, 400, pos)
-                            self.imgButtons["quit"].paint(self.screen, self.collection.panel.rect.right, self.collection.panel.rect.top, pos)
-                    # 墙纸收藏。
-                    elif self.collection.curSub == 1:
-                        self.collection.renderGallery( innerPos, self.fntSet[1] )
-                        # 下方说明
-                        self.addTXT( ("Click to set as your wallPaper!","点击设置你的主界面壁纸！"), self.fntSet[1], mid, 0.925 )
-                        self.addTXT( ("More wallpapers coming soon.","更多壁纸将在后续更新中逐步发放。"), self.fntSet[1], mid, 0.955 )
+                    # 绘制窗口。
+                    chosenCd = self.collection.renderWindow( innerPos, self.fntSet[0] )   # 内部渲染刷新，并返回内部退出纽位置
+                    
+                    # 下方说明
+                    self.addTXT( ("For HEROIC Difficulty, HP & PW +50% .","【英雄】难度下，生命和伤害均+50%。"), self.fntSet[1], mid, 0.925 )
+                    self.addTXT( ("For EASY Difficulty, HP & PW -30%.","【简单】难度下，生命和伤害均-30%。"), self.fntSet[1], mid, 0.955 )
+                    if self.collection.display:
+                        in_but = self.collection.panel.paint(self.screen, self.embed+310, 490, pos)
+                        #self.imgButtons["quit"].paint(self.screen, self.collection.panel.rect.right, self.collection.panel.rect.top, pos)
+                    else:
+                        self.addTXT( ("Select a card to show its description.","点击一个卡片，显示其描述。"), self.fntSet[1], mid, 0.66 )
+                        self.addTXT( ("Values presented are under the NORMAL Difficulty.","显示的属性值均为“标准”难度下的数值。"), self.fntSet[1], mid, 0.69 )
 
                     if self.slide_status=="":
-                        # KeyBoard Event - Rolling Roller by Pressing KeyBoard.
-                        key_pressed = pygame.key.get_pressed()
-                        if ( key_pressed[pygame.K_s] or key_pressed[pygame.K_DOWN] ):
-                            self.collection.roll(1)
-                        elif ( key_pressed[pygame.K_w] or key_pressed[pygame.K_UP] ):
-                            self.collection.roll(-1)
                         # handle the key events
                         for event in pygame.event.get():    # 必不可少的部分，否则事件响应会崩溃。
                             if event.type == QUIT:
@@ -530,11 +567,6 @@ class God():
                                 sys.exit()
                             elif ( event.type == KEYDOWN ):
                                 pass
-                            elif event.type == pygame.MOUSEBUTTONDOWN:  # 鼠标滚轮滚动事件。
-                                if (event.button == 4):    # self.page-down
-                                    self.collection.roll(-1)
-                                elif (event.button == 5):  # self.page-up
-                                    self.collection.roll(1)
                             elif event.type == pygame.MOUSEBUTTONUP:    # 鼠标单击事件。
                                 if (event.button == 1):
                                     # check title.
@@ -551,38 +583,26 @@ class God():
                                         self.collection.display = None
                                         self.slide_status = "out"
                                     # Check monster cards.
-                                    elif self.collection.curSub == 0:
+                                    else:
                                         if self.collection.display:
                                             if in_but:
                                                 self.collection.selectMons(0, 0, tag=in_but.tag)
                                             # 展示monster's detial的情况下，退出按钮被点击
-                                            elif self.imgButtons["quit"].hover_on(pos):
-                                                self.collection.display = None
-                                                del self.stgManager.panel.items
-                                                self.stgManager.panel.items = []
+                                            #elif self.imgButtons["quit"].hover_on(pos):
+                                            #    self.collection.display = None
+                                            #    del self.stgManager.panel.items
+                                            #    self.stgManager.panel.items = []
                                         if chosenCd:
                                             i, each = chosenCd
                                             if self.collection.monsList[i][each].acc:
                                                 self.collection.selectMons(i, each)
                                             else:
                                                 self.msgManager.alert("notFound")
-                                    # Wall papers.
-                                    elif self.collection.curSub == 1:
-                                        for j in (0, 1, 2, 3):
-                                            for i in (0, 1, 2):
-                                                if i+j*3<=len(self.collection.paperNameList)-2:
-                                                    p = self.collection.paperAbbRect[i+j*3]
-                                                    if ( p.left < innerPos[0] < p.right ) and ( p.top < innerPos[1] < p.bottom ):
-                                                        self.collection.activePaper = i+j*3
-                                                        self.setNature( self.collection.paperEffect[self.collection.activePaper] )
-                                                        # 修改文件
-                                                        REC_DATA["SYS_SET"]["PAPERNO"] = i+j*3
-                                                        break
             # ===============================================
             # ================== 英雄  书 ====================
             elif ( self.page == "heroBook" ):
                 pgInfo = self.heroBook.turnAnimation()
-                mid = self.paint_right_panel(pos, 0, banner=True, title=("Player 1","角色1") if self.heroBook.playerNo==0 else ("Player 2","角色2"),
+                mid = self.paint_right_panel(pos, 0, title=("Player 1","角色1") if self.heroBook.playerNo==0 else ("Player 2","角色2"),
                                                 bg=pgInfo[0], bg_pos=pgInfo[1])
 
                 if self.slide_status=="" or self.slide_status=="in":
@@ -608,13 +628,9 @@ class God():
                         elif attrPair[0]=="CNT":
                             self.addTXT( ("Max volume of ammo per loading.","每次填装后的弹药数量上限。"), self.fntSet[1], mid, 0.925 )
                         elif attrPair[0]=="CRIT":
-                            self.addTXT( ("Chance of making critical damage (50% more on basic damage).","造成暴击伤害的概率（比基础伤害额外造成50%）。"), self.fntSet[1], mid, 0.925 )
+                            self.addTXT( (r"Chance of making critical damage (150% basic damage + stun).","造成暴击伤害的概率（150%倍基础伤害+眩晕）。"), self.fntSet[1], mid, 0.925 )
                         self.addTXT( ("Allocate one SP to strengthen the item. (Level up the hero to gain SP)","消耗一个技能点以强化该属性。（技能点通过升级英雄获得）"), self.fntSet[1], mid, 0.955 )
-                    # check whether the current hero is chosen
-                    if self.heroBook.pointer==self.heroBook.curHero[self.heroBook.playerNo]:
-                        self.addSymm(pygame.image.load("image/selected.png"), mid-40, 20 )
-                        self.addTXT( ("Selected","已选中"), self.fntSet[1], mid-40, 0.56 )
-                    
+                                        
                     if self.slide_status=="":
                         # Handle the key events.
                         for event in pygame.event.get():  # 必不可少的部分，否则事件响应会崩溃
@@ -652,7 +668,24 @@ class God():
                 mid = self.paint_right_panel(pos, 0, title=("Settings & Update","设置和更新"))
                 
                 if self.slide_status=="" or self.slide_status=="in":
-                    windowRect = self.addSymm(self.setManager.window, mid, 0)
+                    # Print title labels.
+                    titleList = []
+                    i = 0
+                    per_w, per_h = 160, 40
+                    left = mid -per_w * len(self.setManager.subject)//2     # left是第一个标题的左侧。
+                    for title in self.setManager.subject:
+                        if title == self.setManager.curSub:
+                            bg_rect = self.drawRect( bg_size[0]//2+left+i*per_w, 80, per_w, per_h, (20,20,20,180) )
+                        else:
+                            bg_rect = self.drawRect( bg_size[0]//2+left+i*per_w, 80, per_w, per_h, (0,0,0,0) )
+                        # 检查鼠标是否在最新加入的title rect内
+                        if ( bg_rect.left < pos[0] < bg_rect.right ) and ( bg_rect.top < pos[1] < bg_rect.bottom ):
+                            bg_rect = self.drawRect( bg_size[0]//2+left+i*per_w, 80, per_w, per_h, (120,120,120,180) )
+                        titleList.append( bg_rect )
+                        self.addTXT( self.setManager.subject[title], self.fntSet[1], left+i*per_w+per_w//2, 0.12 )
+                        i += 1
+                    
+                    windowRect = self.addSymm(self.setManager.window, mid, 30)
                     self.setManager.renderWindow( self.fntSet, 
                             (pos[0]-windowRect.left, pos[1]-windowRect.top), self.imgButtons["switch"] )
                     
@@ -665,6 +698,8 @@ class God():
                         self.addTXT( ("Set the BGM's volume of the game.","设置游戏背景音乐的音量。"), self.fntSet[1], mid, 0.93 )
                     elif self.setManager.currentKey == "display":
                         self.addTXT( ("Change the display mode of the game.","更改游戏的显示方式。"), self.fntSet[1], mid, 0.93 )
+                    elif self.setManager.currentKey == "paper":
+                        self.addTXT( ("Set the wall paper of the index page.","设置首页的壁纸。"), self.fntSet[1], mid, 0.93 )
                     elif self.setManager.currentKey == "download":
                         self.addTXT( ("Start downloading new version.","开始下载新版本。"), self.fntSet[1], mid, 0.93 )
                     elif self.setManager.currentKey == "cancel":
@@ -684,13 +719,6 @@ class God():
                         self.addTXT( ("Downloading in the back end, you can play game normally.","下载在后台进行，你可以正常进行游戏。"), self.fntSet[1], mid, 0.93 )
 
                     if self.slide_status=="":
-                        # KeyBoard Event - Rolling Roller by Pressing KeyBoard.
-                        key_pressed = pygame.key.get_pressed()
-                        if ( key_pressed[pygame.K_s] or key_pressed[pygame.K_DOWN] ):
-                            self.setManager.rollerBar.roll(1)
-                        elif ( key_pressed[pygame.K_w] or key_pressed[pygame.K_UP] ):
-                            self.setManager.rollerBar.roll(-1)
-                        
                         # handle the key events
                         for event in pygame.event.get():  # 必不可少的部分，否则事件响应会崩溃
                             if ( event.type == QUIT ):
@@ -706,14 +734,14 @@ class God():
                                     for label in self.indexButtons:
                                         if not label=="account":
                                             self.indexButtons[label].draw_text()
-                                    self.stgManager.panel.updateButton()
-                                    self.stgManager.panelEndless.updateButton()
-                                    self.heroBook.panel.updateButton()
-                                    self.collection.panel.updateButton()
-                                    self.bazaar.taskPanel.updateButton()
-                                    self.accPanel.updateButton()
+                                    # 所有panel内部button的文字替换
+                                    for pan in [self.stgManager.panel, self.stgManager.panelEndless, self.heroBook.panel, self.collection.panel, 
+                                                self.bazaar.taskPanel, self.accPanel]:
+                                        pan.updateButton()
                                     for each in self.bazaar.stonePanels:
                                         each.updateButton()
+                                    # 一个单独textbutton的文字替换
+                                    self.stgManager.unlock_button.draw_text()
                                 elif self.setManager.chosenKey == "volume":
                                     if ( event.key == pygame.K_a ) and ( REC_DATA["SYS_SET"]["VOL"]> 0 ):
                                         REC_DATA["SYS_SET"]["VOL"] -= 10
@@ -726,10 +754,14 @@ class God():
                                 elif self.setManager.chosenKey == "display":
                                     if ( event.key == pygame.K_a ) or ( event.key == pygame.K_d ):
                                         REC_DATA["SYS_SET"]["DISPLAY"] = (REC_DATA["SYS_SET"]["DISPLAY"]+1) %2
-                                        if REC_DATA["SYS_SET"]["DISPLAY"]==0:
-                                            self.screen = pygame.display.set_mode( (bg_size) )
-                                        elif REC_DATA["SYS_SET"]["DISPLAY"]==1:
-                                            self.screen = pygame.display.set_mode( (bg_size), FULLSCREEN|HWSURFACE )
+                                        self.setDisplay()
+                                elif self.setManager.chosenKey == "paper":
+                                    if ( event.key == pygame.K_a ):
+                                        REC_DATA["SYS_SET"]["PAPERNO"] -= 1
+                                    elif ( event.key == pygame.K_d ):
+                                        REC_DATA["SYS_SET"]["PAPERNO"] += 1
+                                    REC_DATA["SYS_SET"]["PAPERNO"] %= len(self.setManager.paperList)
+                                    self.setNature( self.setManager.paperList[REC_DATA["SYS_SET"]["PAPERNO"]]["e"] )
                                 elif self.setManager.chosenKey == "keyTitle":
                                     pass
                                 # 剩下的其他情况只有键位设置（如果已经选中rect的话）
@@ -739,6 +771,16 @@ class God():
                                         continue
                                     self.setManager.changeKey(event.key)
                             elif ( event.type == pygame.MOUSEBUTTONUP ):
+                                # check title.
+                                titleClicked = False
+                                for title in titleList:
+                                    if ( title.left < pos[0] < title.right ) and ( title.top < pos[1] < title.bottom ):
+                                        self.soundList[2].play(0)
+                                        self.setManager.curSub = titleList.index(title)
+                                        titleClicked = True
+                                if titleClicked:    # Title clicked, should not respond to the click on cards.
+                                    continue
+                                
                                 if self.imgButtons["back"].hover_on(pos):
                                     self.soundList[2].play(0)
                                     self.slide_status = "out"
@@ -761,10 +803,7 @@ class God():
                                         elif self.setManager.updateFlag==-1:
                                             self.msgManager.alert("failure")
                             elif event.type == pygame.MOUSEBUTTONDOWN:  # 鼠标滚轮滚动事件。
-                                if (event.button == 4):    # self.page-down
-                                    self.setManager.rollerBar.roll(-1)
-                                elif (event.button == 5):  # self.page-up
-                                    self.setManager.rollerBar.roll(1)
+                                pass
             # ================================================
             # ================= 市集系统 ======================
             elif ( self.page == "bazaar" ):
@@ -800,7 +839,6 @@ class God():
                                     else:
                                         res = self.bazaar.buy_stone()
                                         if res=="OK":
-                                            self.indexButtons["account"].reset()
                                             self.addStones(tag=self.bazaar.currentKey, pos=pos, tgt=self.bazaar.myStonePanel)
                                         elif res=="lackGem":
                                             self.msgManager.alert("lackGem")
@@ -812,24 +850,32 @@ class God():
                 title = self.drawRect( baseRect.left+10, baseRect.top+10, baseRect.width-20, 40, (20,20,20,180) )
                 self.addTXT(("Account Center","账号中心"), self.fntSet[2], 0, 0.32)
 
-                # 绘制文本框
-                self.tbManager.paint(self.screen, ["username","password"])
+                if self.operat == "login":
+                    # 绘制文本框
+                    self.tbManager.paint(self.screen, ["username","password"])
 
-                # button
-                self.registerButton.paint(self.screen, width//2-100, height//2+110, pos)
-                self.loginButton.paint(self.screen, width//2+100, height//2+110, pos)
-                # 右上Guest Login
-                self.imgButtons["quit"].paint( self.screen, title.right, title.top, pos, label=("Guest Player","游客试玩") )
+                    # button
+                    self.registerButton.paint(self.screen, width//2-100, height//2+110, pos)
+                    self.loginButton.paint(self.screen, width//2+100, height//2+110, pos)
+                    # 右上Guest Login
+                    self.imgButtons["quit"].paint( self.screen, title.right, title.top, pos, label=("Guest Player","游客试玩") )
 
-                self.addTXT( ("Basic English/Chinese characters are accepted for all box.",
+                elif self.operat == "reset_pwd":
+                    # 绘制文本框
+                    self.tbManager.paint(self.screen, ["password"])
+
+                    self.addTXT( ("You are resetting your password.","您正在修改密码。"), self.fntSet[1], 0, 0.41 )
+                    self.addTXT( ("New one should be different from the previous one.","新的密码需要与上一个不同。"), self.fntSet[1], 0, 0.44 )
+                    # button
+                    self.registerButton.paint(self.screen, width//2-100, height//2+110, pos)
+                    self.loginButton.paint(self.screen, width//2+100, height//2+110, pos)
+
+                self.addTXT( ("Basic English/Chinese characters are accepted for all boxes.",
                         "所有文本框仅接受基本英文字符和中文字符（生僻字除外）。"), 
-                        self.fntSet[1], 0, 0.92 )
-                self.addTXT( ("If you forget the password, or wish to reset your password, ",
-                        "如果您忘记了密码，或希望重置您的密码，"), 
-                        self.fntSet[1], 0, 0.945 )
-                self.addTXT( ("email throde1998@163.com or contact us on Wechat 'KnightThrode'.",
-                        "可以发送邮件至throde1998@163.com，或通过微信公众号KnightThrode留言联系我们。"), 
-                        self.fntSet[1], 0, 0.97 )
+                        self.fntSet[1], 0, 0.925 )
+                self.addTXT( ("If you forget the password, email [throde1998@163.com] or contact us on Wechat [KnightThrode].",
+                        "如果您忘记了密码，可发送邮件至【throde1998@163.com】，或通过微信公众号【KnightThrode】留言联系我们。"), 
+                        self.fntSet[1], 0, 0.955 )
 
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
@@ -844,15 +890,22 @@ class God():
                         # every time click the button, refocus the textboxes.
                         self.tbManager.set_active(self.tbManager.hover_on(pos))
                         # execute actions
-                        if self.registerButton.hover_on(pos):
-                            self.confirmInput("register")
-                        elif self.loginButton.hover_on(pos):
-                            self.confirmInput("login")
-                        elif self.imgButtons["quit"].hover_on(pos):
-                            # 用户要求以游客身份登录
-                            self.page = "index"
-                            self.tbManager.reset( ["username","password"] )
-                            self.indexButtons["account"].reset()
+                        if self.operat == "login":
+                            if self.registerButton.hover_on(pos):
+                                self.confirmInput("register")
+                            elif self.loginButton.hover_on(pos):
+                                self.confirmInput("login")
+                            elif self.imgButtons["quit"].hover_on(pos):
+                                # 用户要求以游客身份登录
+                                self.page = "index"
+                                self.tbManager.reset( ["username","password"] )
+                                self.indexButtons["account"].reset()
+                        elif self.operat == "reset_pwd":
+                            if self.registerButton.hover_on(pos):   # 取消
+                                self.tbManager.reset( ["password"] )
+                                self.page = "index"
+                            elif self.loginButton.hover_on(pos):
+                                self.confirmInput("reset_pwd")
             
             # move flying gems
             for gem in self.gemList:
@@ -866,18 +919,17 @@ class God():
             pygame.display.flip()
             clock.tick(60)
     
-    def paint_right_panel(self, pos, color_n, banner=False, title=(), bg=None, bg_pos=()):
+    def paint_right_panel(self, pos, color_n, title=(), bg=None, bg_pos=()):
         mid = self.embed//2
         # left and right side panel
         #self.drawRect( 0, 0, self.embed, bg_size[1], (60,60,60,120) )
-        self.drawRect( self.embed, 0, max(bg_size[0]-self.embed, 0), bg_size[1], self.stgManager.themeColor[color_n] )
+        self.drawRect( self.embed, 60, max(bg_size[0]-self.embed, 0), bg_size[1]-120, self.stgManager.themeColor[color_n] )
         # bg image
         if bg:
             self.addSymm(bg, mid, bg_pos)
         # upper and lower banner
-        if banner:
-            self.drawRect( self.embed, 0, max(bg_size[0]-self.embed, 0), 60, self.stgManager.themeColor[0] )
-            self.drawRect( self.embed, bg_size[1]-60, max(bg_size[0]-self.embed, 0), 60, self.stgManager.themeColor[0] )
+        self.drawRect( self.embed, 0, max(bg_size[0]-self.embed, 0), 60, self.stgManager.themeColor[0] )
+        self.drawRect( self.embed, bg_size[1]-60, max(bg_size[0]-self.embed, 0), 60, self.stgManager.themeColor[0] )
         # title
         if title:
             self.addTXT( title, self.fntSet[2], mid, 0.03 )
@@ -943,88 +995,125 @@ class God():
                 self.tbManager.reset(["password"])
                 return
         
+        # 已登录状态，修改密码
+        elif operation=="reset_pwd":
+            # 检查网络
+            if self.setManager.checkAccount(self.tbManager.get_text("username"), "nickname")==False:
+                self.msgManager.alert("failure")
+                return
+            # 检查密码格式
+            if not 6<=len(self.tbManager.get_text("password"))<=12:
+                self.msgManager.alert("passAlarm")
+                self.tbManager.set_alarm(["password"])
+                self.tbManager.reset(["password"])
+                return
+            # 检查全部通过，发送重置密码
+            res = self.setManager.reset_account("password", self.tbManager.get_text("password"))
+            if res == "OK":
+                self.msgManager.alert(res)
+            else:
+                self.msgManager.alert(res)
+                self.tbManager.set_alarm(["password"])
+                self.tbManager.reset(["password"])
+                return
+            
         self.page = "index"
         self.indexButtons["account"].reset()
         # 文件和数据下载完成后，更新程序中的数据
         self.initGameData()
 
-    def shiftChapter(self, to, coverRect, leftC, rightC):
+    def shiftChapter(self, to, coverRect=None, leftC=None, rightC=None):
         if len(self.imgSwitcher.SSList)>0:
             return
         if to==-1:
             if (self.curStg == 1):
                 return
-            self.imgSwitcher.addSwitch(self.stgManager.coverList[self.curStg-1], coverRect, 0.4, 120, 90, time=6)  # 向右退位
-            self.imgSwitcher.addSwitch(self.stgManager.coverAbb[self.curStg-2], leftC, 3.1, 120, -95, time=6)        # 左侧上位
+            self.imgSwitcher.addSwitch(self.stgManager.coverList[self.curStg-1], coverRect, 0.4, 120, 30, time=6)   # 向右退位
+            self.imgSwitcher.addSwitch(self.stgManager.coverAbb[self.curStg-2], leftC, 3.1, 120, -30, time=6)       # 左侧上位
         elif to==1:
             if ( self.curStg == len(self.stgManager.nameList) ):
                 return
-            self.imgSwitcher.addSwitch(self.stgManager.coverList[self.curStg-1], coverRect, 0.4, -120, 90, time=6) # 向左退位
-            self.imgSwitcher.addSwitch(self.stgManager.coverAbb[self.curStg], rightC, 3.1, -120, -95, time=6)        # 右侧上位
+            self.imgSwitcher.addSwitch(self.stgManager.coverList[self.curStg-1], coverRect, 0.4, -120, 30, time=6)  # 向左退位
+            self.imgSwitcher.addSwitch(self.stgManager.coverAbb[self.curStg], rightC, 3.1, -120, -30, time=6)       # 右侧上位
         self.curStg += to
         # save chpter stop info.
         REC_DATA["SYS_SET"]["STG_STOP"] = self.curStg
         self.setNature(self.curStg)
         self.choosable = self.stgManager.checkChoosable(self.curStg)
+        self.unlockBut = True if (REC_DATA["SYS_SET"]["MOD_STOP"]==0) and (not self.choosable) and (REC_DATA["CHAPTER_REC"][self.curStg-2]>=0) else False
 
     def startChapter(self):
         if not self.choosable:
             return "falseStg"
-        going = True
-        if REC_DATA["SYS_SET"]["MOD_STOP"] == 0:
-            # 冒险模式有一系列准备工作。首先判断p1所选英雄是否与人质重合。
-            if self.heroBook.heroList[self.heroBook.curHero[0]].no==self.curStg:
-                return "banHero"
-            pygame.mixer.music.fadeout(1000)
-            pygame.mixer.music.unload()
-            # 然后依据是否是最后一关修改获胜条件。
-            if self.curStg>6:
-                hostage = None
-            else:
-                hostage = self.heroBook.heroList[self.curStg]
-            # 玩家英雄信息。
-            if not self.stgManager.P2in:
-                playerList = [ (self.heroBook.heroList[self.heroBook.curHero[0]],self.setManager.keyDic1,"p1") ]
-            else:
-                playerList = [ (self.heroBook.heroList[self.heroBook.curHero[0]],self.setManager.keyDic1,"p1"), 
-                    (self.heroBook.heroList[self.heroBook.curHero[1]],self.setManager.keyDic2,"p2") ]
-            # 正式进入游戏循环：
-            #self.setManager.changeProcessState("adventure")
-            print(">>章节开始前",psutil.Process(os.getpid()).memory_info().rss)
-            while going:
-                # Note: accList会在model中直接被操作。
-                mod = model.AdventureModel( self.curStg, playerList, self.screen, REC_DATA["SYS_SET"]["LGG"], self.fntSet, 
-                                            self.stgManager.diffi, self.collection.monsList[self.curStg], 
-                                            hostage, tutor_on=bool(REC_DATA["SYS_SET"]["TUTOR"]), stone=self.stgManager.stone_in_use )
-                # 返回的going：True表示winning，False表示failing. (由go()函数最后的conclusion界面确定。)
-                going = mod.go( self.soundList, self.heroBook, self.stgManager, self.stgManager.diffi, REC_DATA["SYS_SET"]["VOL"], self.bazaar.task )
-                mod.clearAll()
-                del mod
-                # 结算符石数量
-                self.stgManager.decr_stone()
-            #self.setManager.changeProcessState("index")
-            # 刷新主界面宝石数量
-            self.indexButtons["account"].reset()
-            print(">>章节结束",psutil.Process(os.getpid()).memory_info().rss)
-        elif REC_DATA["SYS_SET"]["MOD_STOP"] == 1:
-            pygame.mixer.music.fadeout(1000)
-            #self.setManager.changeProcessState("endless")
-            print(">>章节开始前",psutil.Process(os.getpid()).memory_info().rss)
-            while going:
-                # 从已选择的章节开始
-                mod = model.EndlessModel( self.stgManager.startChp, self.setManager.keyDic1, self.screen, REC_DATA["SYS_SET"]["LGG"], 
-                                        self.fntSet, self.collection.monsList[self.curStg], 
-                                        self.heroBook.heroList[self.heroBook.curHero[0]], stone=self.stgManager.stone_in_use )
-                going = mod.go( self.soundList, self.heroBook, self.stgManager, self.setManager, REC_DATA["SYS_SET"]["VOL"], self.bazaar.task )
-                mod.clearAll()
-                del mod
-                # 结算符石数量
-                self.stgManager.decr_stone()
-            #self.setManager.changeProcessState("index")
-            print(">>章节结束",psutil.Process(os.getpid()).memory_info().rss)
-        # 每次章节结束后，都更新主界面任务栏状态
-        self.bazaar.update_task(prog_only=True)
+        
+        try:
+            going = True
+            if REC_DATA["SYS_SET"]["MOD_STOP"] == 0:
+                if self.curStg>6:
+                    hostage = None
+                # 判断p1所选英雄是否与人质重合。
+                elif self.heroBook.heroList[self.heroBook.curHero[0]].no==self.curStg:
+                    hostage = self.heroBook.heroList[0]
+                else:
+                    hostage = self.heroBook.heroList[self.curStg]
+                # 玩家英雄信息。
+                if not self.stgManager.P2in:
+                    playerList = [ (self.heroBook.heroList[self.heroBook.curHero[0]],self.setManager.keyDic1,"p1") ]
+                else:
+                    playerList = [ (self.heroBook.heroList[self.heroBook.curHero[0]],self.setManager.keyDic1,"p1"), 
+                        (self.heroBook.heroList[self.heroBook.curHero[1]],self.setManager.keyDic2,"p2") ]
+                # 正式进入游戏循环：
+                #self.setManager.changeProcessState("adventure")
+                #print(">>章节开始前",psutil.Process(os.getpid()).memory_info().rss)
+                while going:
+                    # Note: accList会在model中直接被操作。
+                    mod = model.AdventureModel( self.curStg, playerList, self.screen, REC_DATA["SYS_SET"]["LGG"], self.fntSet, 
+                                                self.stgManager.diffi, self.collection.monsList[self.curStg], 
+                                                hostage, stone=self.stgManager.stone_in_use )
+                    # 返回的going：True表示winning，False表示failing. (由go()函数最后的conclusion界面确定。)
+                    going = mod.go( self.soundList, self.heroBook, self.stgManager, self.stgManager.diffi, REC_DATA["SYS_SET"]["VOL"], self.bazaar.task )
+                    mod.clearAll()  # 清除主要元素，释放内存
+                    del mod
+                    # 结算符石数量
+                    self.stgManager.decr_stone()
+                #self.setManager.changeProcessState("index")
+                #print(">>章节结束",psutil.Process(os.getpid()).memory_info().rss)
+            elif REC_DATA["SYS_SET"]["MOD_STOP"] == 1:
+                pygame.mixer.music.fadeout(1000)
+                #self.setManager.changeProcessState("endless")
+                #print(">>章节开始前",psutil.Process(os.getpid()).memory_info().rss)
+                while going:
+                    # 从已选择的章节开始
+                    mod = model.EndlessModel( self.stgManager.startChp, self.setManager.keyDic1, self.screen, REC_DATA["SYS_SET"]["LGG"], 
+                                            self.fntSet, self.collection.monsList[self.curStg], 
+                                            self.heroBook.heroList[self.heroBook.curHero[0]], stone=self.stgManager.stone_in_use )
+                    going = mod.go( self.soundList, self.heroBook, self.stgManager, self.setManager, REC_DATA["SYS_SET"]["VOL"], self.bazaar.task )
+                    mod.clearAll()
+                    del mod
+                    # 结算符石数量
+                    self.stgManager.decr_stone()
+                #self.setManager.changeProcessState("index")
+                #print(">>章节结束",psutil.Process(os.getpid()).memory_info().rss)
+            # 每次章节结束后，都更新主界面任务栏状态
+            self.bazaar.update_task(prog_only=True)
+        except:
+            self.msgManager.alert( "NULL" )
+            print(traceback.format_exc())
     
+    def startPractice(self):
+        playerList = [ (self.heroBook.heroList[self.heroBook.curHero[0]],self.setManager.keyDic1,"p1") ]
+        mod = model.TutorialModel( playerList, self.screen, REC_DATA["SYS_SET"]["LGG"], self.fntSet, 
+                                    self.stgManager.diffi, self.collection.monsList[self.curStg], 
+                                    tutor_on=True, stone=self.stgManager.stone_in_use )#bool(REC_DATA["SYS_SET"]["TUTOR"])
+        res = mod.go( self.soundList, self.heroBook, self.stgManager, self.stgManager.diffi, REC_DATA["SYS_SET"]["VOL"], self.bazaar.task )
+        # 教程已完成，可以关闭推荐，从1置为0（1表示待完成）
+        if res==True and REC_DATA["SYS_SET"]["TUTOR"]==1:
+            REC_DATA["SYS_SET"]["TUTOR"] = 0
+        mod.clearAll()
+        del mod
+        # 结算符石数量
+        self.stgManager.decr_stone()
+
     def drawCover(self, cover, chpName, pos, mid, edge):
         coverRect = self.addSymm(cover, mid, -40 )
         if ( coverRect.left < pos[0] < coverRect.right ) and ( coverRect.top < pos[1] < coverRect.bottom ):
@@ -1042,9 +1131,9 @@ class God():
             self.drawRect( coverRect.left, coverRect.top, coverRect.width, coverRect.height, self.stgManager.themeColor[0] )
             self.addSymm(self.stgManager.lock, mid, -40 )
             if REC_DATA["SYS_SET"]["MOD_STOP"]==0:
-                self.addTXT( (f"Complete CHARTER {self.curStg-1} to unlock",f"通过第{self.curStg-1}章以解锁本章"), self.fntSet[1], mid, 0.61 ) # 关卡名处用这句提示代替
+                self.addTXT( (f"Complete CHAP. {self.curStg-1} to unlock",f"通过第{self.curStg-1}章以解锁本章"), self.fntSet[1], mid, 0.61 ) # 关卡名处用这句提示代替
             elif REC_DATA["SYS_SET"]["MOD_STOP"]==1:
-                self.addTXT( (f"Complete CHARTER 7 to unlock",f"通过第7章以解锁本模式"), self.fntSet[1], mid, 0.61 ) # 关卡名处用这句提示代替
+                self.addTXT( (f"Complete CHAP. 7 to unlock",f"通过第7章以解锁本模式"), self.fntSet[1], mid, 0.61 ) # 关卡名处用这句提示代替
         # 边框
         pygame.draw.rect( self.screen, (250,250,250), coverRect, 1 )
         edgeRect = ( (coverRect.left-edge,coverRect.top-edge), (coverRect.width+2*edge,coverRect.height+2*edge) )
@@ -1053,18 +1142,17 @@ class God():
         
     def setNature(self, stg):
         '''# Shift nature effect according to stg. Varies according to self.curStg.'''
-        del self.nature
         self.nature = None
         if stg in (1,3):  # 漂浮粒子
-            self.nature = mapManager.Nature(bg_size, stg, 10, 1)
+            self.nature = Nature(bg_size, stg, 10, 1)
         elif stg == 2:      # 下落碎石
-            self.nature = mapManager.Nature(bg_size, stg, 5, 0)
+            self.nature = Nature(bg_size, stg, 5, 0)
         elif stg in (4,7):  # 雨水
-            self.nature = mapManager.Nature(bg_size, stg, 18, 0)
+            self.nature = Nature(bg_size, stg, 18, 0)
         elif stg == 5:      # 雪花
-            self.nature = mapManager.Nature(bg_size, stg, 11, -1)
+            self.nature = Nature(bg_size, stg, 11, -1)
         elif stg == 6:      # 电焊花火
-            self.nature = mapManager.Nature(bg_size, stg, 8, 1)
+            self.nature = Nature(bg_size, stg, 8, 1)
         
     def addGems(self, num, pos, tgt, cList=[20,22,24]):
         if num==0:
@@ -1072,13 +1160,19 @@ class God():
         for i in range(0, num):
             randPos = [ randint(pos[0]-1, pos[0]+1), randint(pos[1]-1, pos[1]+1) ]
             speed = [ randint(-2,2), randint(-4,-1) ]
-            gem = mapManager.Coin( randPos, choice( cList ), speed, tgt, typ="gem" )
+            gem = Coin( randPos, choice( cList ), speed, tgt, typ="gem" )
             self.gemList.add( gem )
     
     def addStones(self, tag, pos, tgt):
-        stone = mapManager.Coin( list(pos), cnt=22, speed=[0,-4], tgt=tgt, typ=f"stone_{tag}")
+        stone = Coin( list(pos), cnt=22, speed=[0,-4], tgt=tgt, typ=f"stone_{tag}")
         self.gemList.add(stone)
     
+    def setDisplay(self):
+        if REC_DATA["SYS_SET"]["DISPLAY"]==0:
+            self.screen = pygame.display.set_mode( (bg_size) )
+        elif REC_DATA["SYS_SET"]["DISPLAY"]==1:
+            self.screen = pygame.display.set_mode( (bg_size), pygame.FULLSCREEN|pygame.HWSURFACE )
+
     def addSymm(self, surface, x, y):       # Surface对象； x，y为正负（偏离中心点）像素值
         rect = surface.get_rect()
         rect.left = (width - rect.width) // 2 + x
@@ -1105,7 +1199,7 @@ class God():
         return rect
 
 
-# =================================================
+# ======================================================================
 # invoke main() & start the program if this is the main module
 if __name__ == "__main__":
     try:
@@ -1114,15 +1208,13 @@ if __name__ == "__main__":
     except SystemExit:
         # 系统正常退出
         pass
-    except:
-        # 异常退出
-        traceback.print_exc()
     finally:
-        with open('./record.data', 'wb') as f:
+        with open('./record.sav', 'wb') as f:
             pickle.dump(REC_DATA, f)
-        # 结束游戏时，上传记录至云端，并等待1秒s
-        if REC_DATA["GAME_ID"] != 1:
-            theGod.setManager.transmitFile(op="upload")
-            print(">> Saving Record (sysexit)...")
-            time.sleep(1)
+        if PLATFORM=="self":
+            # 结束游戏时，上传记录至云端
+            if REC_DATA["GAME_ID"] != 1:
+                theGod.setManager.transmitFile(op="upload")
+                print(">> Saving Record (sysexit)...")
+                time.sleep(0.5)
         pygame.quit()

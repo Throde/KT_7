@@ -1,7 +1,14 @@
-# plot manager
-import threading
+"""
+plotManager.py:
+本模块是文字、多媒体资源管理模块，负责所有菜单页的类管理，如：
+冒险模式中触发剧情对话的跟踪交互管理；
+怪物收藏的数据和界面管理；
+英雄书的数据和界面管理；
+联网、下载、钻石、符石商店、按键设置等的数据和界面管理。
+"""
+from threading import Thread
 import pygame
-from random import *
+from random import choice, sample
 
 from database import MB, DT, REC_DATA, TB, RB
 import database
@@ -9,12 +16,11 @@ from util import TextButton, ImgButton, Panel, RichText, TextBox
 from util import generateShadow, drawRect
 
 
-VERSION = "KT_7.3.5"
+VERSION = "KT_7.4.3"
 SERVER_IP = "121.199.75.3"
 REMOTE_PATH = "/var/www/KT_records/"
 
 
-# 本模块是文字、多媒体资源管理模块，负责冒险模式中触发剧情对话的跟踪交互管理。
 # ==============================================================================================
 # ==============================================================================================
 class Dialogue():
@@ -151,7 +157,10 @@ class Dialogue():
         ("In Adventure Mode when calculating the result of a game, for each 2 coins","在冒险模式中结算游戏结果时，每2枚硬币可以换得1点经验值。"),
         ("you get 1 point of exp. So coin is half value of exp. Endless Mode will not","所以硬币的价值是经验的一半。尽管无尽模式中也可以收集金币，"),
         ("give you exp, although you can also collect coins there.","但他们在游戏最后不会转化为经验。")
-    ],[  # About Adventure Model
+    ], [
+        (r"Critical damage can be randomly achieved. It deals 150% damage of basic DMG,","暴击伤害会以一定概率随机打出。暴击造成基础伤害的150%，"),
+        ("pushes targets back more, and also stuns targets for 0.5 seconds.","击退力更强，还会眩晕目标0.5秒。")
+    ], [  # About Adventure Model
         ("In Adventure Model of Heroic Difficulty you will face much stronger", "在“英雄”难度的冒险模式中，你会面对更加凶残、"),
         ("Enemies. Any of high level or good skill is needed.", "更加坚韧的怪物。高等级、好技术，你至少得有一样。")
     ], [
@@ -167,9 +176,9 @@ class Dialogue():
         ("clear up the tower alone and return to get the hostage.", "但是你也可以独自清理出一条前路，然后回来捎上人质。")
     ], [  # About Endless Model
         ("BiteChest is special for Endless Model. It's a bonus!","咬咬宝箱是无尽模式特有的怪物。它其实是个奖励！"),
-        ("Cracking it can gain you about 5 to 10 coins.", "打爆它就可以获得约5至10个金币。")
+        ("Cracking it can gain you about 6 to 10 coins.", "打爆它就可以获得约6至10个金币。")
     ], [
-        ("In Endless Model, you will come across a stage Boss per 8 waves.", "无尽模式中，每8波就会迎来一只关卡Boss。"),
+        ("In Endless Model, you will come across a stage Boss per 5 waves.", "无尽模式中，每5波就会迎来一只关卡Boss。"),
         ("Killing them rewards you handsome coins!", "击杀它可以获得极为可观的金币奖励！")
     ], [
         ("In Endless Model, you will face more elite enemies and", "无尽模式中，会遇到越来越多的精英怪物，以及愈发"),
@@ -179,27 +188,23 @@ class Dialogue():
         ("She will kill enemy and earn coins for you. She also wears an armor that","她会杀死怪物，并替你挣得金币。她还穿有一身轻甲，"),
         ("enable her to take reduced damage (30 percents less).","能够帮助她减轻所受的伤害（30%减伤）。")
     ], [
-        ("No supply chest is provided in Endless Model.","无尽模式中不会提供任何的补给箱。但你可以从商人那里"),
-        ("but you can buy any items you need from the merchant.","买到任何你需要的物品。")
-    ], [
-        ("Each time when a new wave is coming, the structure of the tower","当新的一波敌人到来时，整个塔楼的结构都会"),
-        ("is also refreshed. We strongly suggest you take a short shelter","发生变化。这个时候，我们强烈建议你在塔楼"),
-        ("at the platforms on both side of the tower.","两侧的小平台上躲一躲。")
+        ("No supply chest is provided in Endless Model. But you can","无尽模式中不会提供任何的补给箱。但你可以在每波结束时"),
+        ("buy any item you need from the merchant at the end of each wave.","从商人那里买到任何你需要的物品。")
     ]
     
     #字典，指向所有的关卡信息。
-    allPre = { 1:[chp1_1, chp1_2, [], chp1_3], 
-        2:[chp2_1, chp2_2, [], chp2_3], 
-        3:[chp3_1, chp3_2, [], chp3_3], 
-        4:[chp4_1, chp4_2, [], chp4_3], 
-        5:[chp5_1, chp5_2, [], chp5_3], 
-        6:[chp6_1, chp6_2, [], chp6_3], 
-        7:[chp7_1, chp7_2, [], chp7_3] }
+    allPre = { 1:[chp1_1, chp1_2, [], chp1_3, []], 
+        2:[chp2_1, chp2_2, [], chp2_3, []], 
+        3:[chp3_1, chp3_2, [], chp3_3, []], 
+        4:[chp4_1, chp4_2, [], chp4_3, []], 
+        5:[chp5_1, chp5_2, [], chp5_3, []], 
+        6:[chp6_1, chp6_2, [], chp6_3, []], 
+        7:[chp7_1, chp7_2, [], chp7_3, []] }
     preList = []    #只存储当前关卡pre的列表
 
     # Words of Interaction part -----------------
     propExplan = {
-        "supAmmo":[("For the rest of this challenge,","在本次挑战的剩余时间内，"), ("your hero gains +1 ammo limit.","英雄的弹药容量提升+1。")],
+        "ammo":[("For the rest of this challenge,","在本次挑战的剩余时间内，"), ("your hero gains +1 ammo limit.","英雄的弹药容量提升+1。")],
         "fruit":[("[Instant] Basic for treatment.","【即时性物品】回复体力的基本手段。"), ("Recover 10 HP after used.","使用后回复10点体力。")],
         "loadGlove":[("[Instant]","【即时性物品】"), ("Immediately finish loading ammos.","立刻完成投掷物的填装。")],
         "servant":[("Summon a 800HP/50DMG servant","召唤一名800体力值、50伤害值，"),("with 30 percent hit reduction to reinforce you. ","拥有百分之30减伤的侍从来援助你战斗。")],
@@ -211,8 +216,8 @@ class Dialogue():
         "herbalExtract":[("[Durable] Can be found in Underground Cave.","【持续性物品】可发现于地下洞穴。"), ("Slowly recover up to 300 HP with in 5 sec,","在5秒内缓慢恢复至多300点体力，"), ("but will be terminated if hero get hitted.","但是一旦受到伤害，治疗效果便会终止。")], 
         "blastingCap":[("[Instant] Can be found in Underground Cave.","【即时性物品】可发现于地下洞穴。"), ("Cast it out and it will deal 500 explosive damage","扔出后，它将对巨大范围内的所有"), ("to all destructible stuffs within a huge range!","可摧毁物均造成500点巨额伤害！")], 
         
-        "torch":[("[Durable] Can be found in Grave Yard.","【持续性物品】可发现于亡灵乐园。"), ("Expands hero's horizon in dark mist,","在黑暗迷雾中扩大英雄的可见范围，"), ("and luminates Area Goalies.","并照亮区域守卫。")], 
-        "medicine":[("[Instant] Can be found in Grave Yard.","【即时性物品】可发现于亡灵乐园。"), ("Cure the infected hero after used.","使用后将治愈受到感染的英雄。")], 
+        "torch":[("[Durable] Can be found in Grave Yard.","【持续性物品】可发现于亡灵乐园。"), ("Expands your horizon in dark mist and luminates Area Keepers.","在黑暗迷雾中扩大可见范围，并照亮区域守卫。"), ("Enemies within its range get continuous burned.","范围内的敌人还会受到持续灼伤。")], 
+        "medicine":[("[Instant] Can be found in Grave Yard.","【即时性物品】可发现于亡灵乐园。"), ("Cure the infected hero; if user is not infected, ","使用后将治愈受到感染的英雄；如果使用者未感染，"), ("heal 100 HP instead.","改为回复100点体力。")], 
         
         "copter":[("[Durable] Can be found in Ooze Forest.","【持续性物品】可发现于软泥雨林。"), ("Enable user to fly freely for a while.","使英雄获得一段时间的自由飞行能力。")], 
         "pesticide":[("[Durable] Can be found in Ooze Forest.","【持续性物品】可发现于软泥雨林。"), ("Spray pesticide to the air to kill insects!","向空中喷洒杀虫剂来消灭这些昆虫！")], 
@@ -223,7 +228,8 @@ class Dialogue():
         "simpleArmor":[("[Durable] Can be found in Antique Factory.","【持续性物品】可发现于古旧工厂。"), ("Equiper gain 240 armors to prevent from injury.","获得240点护甲值，保护装备者免于外界伤害。"), ("Actions won't be interrupted until it's broken.","装备期间的行动不再会因受伤而中断。")], 
         "missleGun":[("[Durable] Can be found in Antique Factory.", "【持续性物品】可发现于古旧工厂。"), ("Replace your ammo with 4 missles.","将你的远程武器替换为4枚火箭弹。"), ("Each missle aims at AIR enemy and deals 400 damage.","每枚火箭弹自动瞄准飞行生物，造成400点伤害。")],
         
-        "shieldSpell":[("[Durable] Can be found in Riot Capital.","【持续性物品】可发现于动荡王城。"), ("For a while prevent 65 percent of physical type damage.","一段时间内，减免受到的物理伤害的65%。")]
+        "shieldSpell":[("[Durable] Can be found in Riot Capital.","【持续性物品】可发现于动荡王城。"), ("For a while prevent 65 percent of physical type damage.","一段时间内，减免受到的物理伤害的65%。")],
+        "rustedHorn":[("[Instant] Can be found in Riot Capital.","【即时性物品】可发现于动荡王城。"), ("Stun enemies in a large range, and for each enemy within range","眩晕大片范围内的敌人，吹号范围内每有一个敌人便"), ("restore 30 HP for all allies.","为所有友方角色回复30点体力。")]
     }
     
     # ====================================================================
@@ -270,6 +276,7 @@ class StgManager():
     themeColor = [ (40,40,40,alp), (200,100,100,alp), (90, 90, 160, alp), (180, 90, 210, alp), (90, 180, 90, alp), (140, 140, 220, alp), (180, 180, 90, alp), (160, 160, 160, alp) ]#, (210, 160, 170, alp) ]
     # 绝对位置     endless     chp1    chp2       chp3        chp4        chp5       chp6       chp7
     compassPos = [(25,-120), (85,-10), (65,-90), (20,-210), (-120,-135), (-140,0), (-65,-40), (-30,-120) ]
+    unlock_cost = 50
 
     # ====================================================================
     # Constructor of StgManager ------------------------------------------
@@ -295,7 +302,7 @@ class StgManager():
         self.difficultyIcon = pygame.image.load("image/selected.png").convert_alpha()
         self.lock = pygame.image.load("image/lock.png").convert_alpha()
         self.starImg = pygame.image.load("image/star.png").convert_alpha()
-        self.starVoid = generateShadow(self.starImg, color=(10,10,10,160))
+        self.starVoid = generateShadow(self.starImg, color=(20,20,20,180))
 
         stoneImgDic = { tag: pygame.image.load(f"image/runestone/{tag}.png") for tag in RB }
         stoneImgDic["VOID"] = pygame.image.load("image/runestone/voidStone.png")
@@ -306,7 +313,7 @@ class StgManager():
         self.diffi = REC_DATA["SYS_SET"]["DIFFI"]
         self.P2in = False            # 初始默认为single，即P2不参战
         # Chapter Settings Panel -----------
-        self.panel = Panel(180, 210, font, title=("Chapter Settings","章节设置"))
+        self.panel = Panel(180, 150, font, title=("Chapter Settings","章节设置"))
         self.panel.addItem( ("- Difficulty -","- 游戏难度 -") )
         self.panel.addItem( TextButton(160,30,
             {0:("Easy","简单"), 1:("Normal","标准"), 2:("Heroic","英雄")}, self.diffi, font), tag="diffi"    
@@ -315,14 +322,9 @@ class StgManager():
         self.panel.addItem( TextButton(160,30,
             {True:("P2 In","P2参战"), False:("P2 Out","P2不参战")}, self.P2in, font), tag="P1P2" 
         )
-        # Guide FLAG: 0-shut down; 1-open.
-        self.panel.addItem( ("- Chapter1 Tutor -","- 第1章教程 -") )
-        self.panel.addItem( TextButton(160,30,
-            {1:("ON","开启"), 0:("OFF","关闭")}, REC_DATA["SYS_SET"]["TUTOR"], font), tag="tutor" 
-        )
         # Endless Settings Panel -----------
         self.startChp = 1
-        self.panelEndless = Panel(180,210, font, title=("Challenge Settings","挑战设置"))
+        self.panelEndless = Panel(180,150, font, title=("Challenge Settings","挑战设置"))
         self.panelEndless.addItem( ("- Start Chapter -","- 起始章节 -") )
         nameDic = {}
         for i in range(len(self.nameList)):
@@ -330,6 +332,11 @@ class StgManager():
         self.panelEndless.addItem( TextButton(160,30,
             nameDic, self.startChp, font), tag="startChp"
         )
+        # unlock guide
+        self.unlock_button = TextButton( 120, 30, {"default":("Unlock","解锁")}, 
+            "default", font, rgba=(40,120,40,210) )
+        self.unlock_guide = RichText( (f"or spend _IMG_{self.unlock_cost}",f"或消耗 _IMG_{self.unlock_cost}"), 
+                pygame.image.load("image/gem0.png").convert_alpha(), font) 
         
     def updateCompass(self, nxt):
         self.delay = (self.delay+1)%240
@@ -343,14 +350,26 @@ class StgManager():
         self.windowLeft.blit(self.compass, rect)
     
     def checkChoosable(self, stg):
-        # 检查上一关是否通关，据此设定本关的choosable
-        if (stg == 1) or (REC_DATA["CHAPTER_REC"][stg-2]>=0):
+        # Endless Mode: final chapter should have been passed
+        if stg==0 and REC_DATA["CHAPTER_REC"][-1]>0:
             return True
-        elif stg==0 and REC_DATA["CHAPTER_REC"][6]>=0:    # 无尽模式，冒险第七章通过即可
+        # Adventure Mode: as long as the chapter has been unlocked
+        elif REC_DATA["CHAPTER_REC"][stg-1]>=0:
             return True
         else:
             return False
         
+    def purchaseChapter(self, stg):
+        # check gems
+        if REC_DATA["GEM"] < self.unlock_cost:
+            pygame.mixer.Sound("audio/alert.wav").play(0)
+            return "lackGem"
+        # currently only advent mode will be unlocked this way
+        REC_DATA["CHAPTER_REC"][stg-1] = 0
+        REC_DATA["GEM"] -= self.unlock_cost
+        pygame.mixer.Sound("audio/coin.wav").play(0)
+        return "OK"
+
     def shiftStartChp(self):
         self.startChp = self.startChp%len(self.nameList)+1
         self.panelEndless.updateButton(but_tag="startChp", label_key=self.startChp)
@@ -386,9 +405,13 @@ class StgManager():
     def renewRec(self, indx, newVal, gameMod=0):
         # 冒险通关信息，检查、更改信息
         if ( gameMod == 0 ):
-            # 这里newVal规定为难度级别值，故比原纪录大，则进行更新。否则不更新。
-            if newVal > REC_DATA["CHAPTER_REC"][indx]:
-                REC_DATA["CHAPTER_REC"][indx] = newVal
+            # 这里newVal规定为难度级别值+1（原0-简单，1-标准，2-困难），故比原纪录大则更新。
+            if newVal+1 > REC_DATA["CHAPTER_REC"][indx]:
+                REC_DATA["CHAPTER_REC"][indx] = newVal+1
+                # 若下一章未解锁，则将之解锁（最后一章解锁时，无需考虑后一章）
+                if indx < len(self.nameList)-1:
+                    if REC_DATA["CHAPTER_REC"][indx+1] <0:
+                        REC_DATA["CHAPTER_REC"][indx+1] = 0
                 return True
         # EndlessMode，更新分数
         elif (gameMod == 1):
@@ -411,26 +434,15 @@ class Collection():
     cardOn = None
     board = None
 
-    cardY = [ -170, 10, 190, 370, 550, 730, 910 ]
+    cardY = [ -150, 10, 190, 370, 550 ]
     cardRect = []      # 按序保存所有cardrect引用的列表（行优先）
     display = None     # 显示大图查看详情的标记，用于指示应当显示某个坐标的怪物（VMons类型）。None表示不显示。
 
-    # wallPaper Collection部分:----------------------
-    paperNameList = [ ("???","？？？"), ("Fighting Dragon","鏖战巨龙"), ("Night Ruins","雨夜废墟"), ("Castle Escape","逃脱城堡"), ("Cave Lost","洞穴迷踪"), 
-        ("Into Grave","踏入墓园"), ("Hunting Alone","独自狩猎"), ("Northern Preach","布道北国") ]
-    paperEffect = [ 1, 4, 1, 2, 3, 4, 5 ]    # 直接开始，首位无空位
-    paperList = []     # 壁纸原画列表
-    paperRect = []     # 壁纸原画的位置信息列表
-
-    paperX = [ -140, 140 ]
-    paperY = [ -190, -30, 130, 290 ]
-    paperAbbList = []  # 壁纸缩略图列表
-    paperAbbRect = []  # 壁纸缩略图位置列表
-    activePaper = 0
-
     # 一些界面的参数，显示元素的窗口。------------------
-    subject = { 0:("Monsters","怪物图鉴"), 1:("WallPapers","主页壁纸") }
-    progress = { 0:("0/0","0/0"), 1:("0/0","0/0")}
+    subject = { 0:("Chap.1","第1章"), 1:("Chap.2","第2章"), 2:("Chap.3","第3章"), 3:("Chap.4","第4章"), 4:("Chap.5","第5章"), 
+        5:("Chap.6","第6章"), 6:("Chap.7","第7章") }
+    progress = { 0:("0/0","0/0"), 1:("0/0","0/0"), 2:("0/0","0/0"), 3:("0/0","0/0"), 4:("0/0","0/0"), 
+        5:("0/0","0/0"), 6:("0/0","0/0")}
     window = None
     WDRect = None
 
@@ -439,20 +451,15 @@ class Collection():
     def __init__(self, width, height, stgName, font):
         # initialize the properties of the object
         self.curSub = 0
-        # 创建滚动条对象。分别是monsters、wallpapers的roller纵坐标（相对）。
-        self.rollerBars = {
-            0: RollerBar(0, rollerStep=20, pageStep=40),
-            1: RollerBar(0, rollerStep=60, pageStep=60)
-        }
         # 以下是怪物图鉴部分 ----------------------------------------------
         self.stgName = stgName
-        self.monsList[0] = VMons( "Unknown",(0,0),["Kill one to collect in adventure model.","在冒险模式中击杀一只此怪物来收集它。"], "notFound.png" )
+        self.monsList[0] = VMons( "Unknown",(0,0),["Kill one to collect in adventure model.","在冒险模式中击杀一只此怪物来收集它。"], "lock.png" )
         # CHPT-1
         stg = self.monsList[1]
-        stg["gozilla"] = VMons( "gozilla",(1,0),
-            ["Many wonder how can Gozilla walk in fire. But no one has answer cause seekers are all eaten up.","很多人好奇小哥斯拉为什么可以在火里行走，但始终没有答案，因为去问的人都被吃了。"], "stg1/gozilla0.png" )
-        stg["megaGozilla"] = VMons( "megaGozilla",(1,1),
-            ["Mature but dull, and more homely-looking. Anyway, you'll be roasted if you dare comment on his nose.","成熟多了，却也变得行动迟缓。比起小时候还丑了许多。如果你胆敢当面这么评论的话，它会把你烤熟。"], "stg1/megaGozilla1.png" )
+        stg["tizilla"] = VMons( "tizilla",(1,0),
+            ["Many wonder how can Tizilla walk in fire. But no one has answer cause seekers are all eaten up.","很多人好奇弟斯拉为什么可以在火里行走，但始终没有答案，因为去问的人都被吃了。"], "stg1/tizilla0.png" )
+        stg["megaTizilla"] = VMons( "megaTizilla",(1,1),
+            ["Mature but dull, and more homely-looking. Anyway, you'll be roasted if you dare comment on his nose.","成熟多了，却也变得行动迟缓。比起小时候还丑了许多。如果你胆敢当面这么评论的话，它会把你烤熟。"], "stg1/megaTizilla1.png" )
         stg["dragon"] = VMons( "dragon",(1,2),
             ["Never touch his head for his loveliness. If you insist doing so, tie up his smoking mouth first.","不要看火龙宝宝可爱就上去摸他的脑袋。如果非要这么做，请先把他冒烟的嘴巴捆上。"], "stg1/dragonLeft1.png" )
         stg["dragonEgg"] = VMons( "dragonEgg",(1,3),
@@ -538,111 +545,48 @@ class Collection():
         for i in (1,2,3,4,5,6,7):     # 逐关地初始化VMons的rect信息。
             x = -230
             for each in self.monsList[i]:
-                self.monsList[i][each].rect = self.addSymm( self.card, x, self.cardY[i-1] )
+                self.monsList[i][each].rect = self.addSymm( self.card, x, self.cardY[0] )
                 x += 115
         
-        # 以下是墙纸About wallPaper part: -------------------------------------------------------------
-        self.activePaper = REC_DATA["SYS_SET"]["PAPERNO"]    # wallPaper No初始默认为0
-        k = 0
-        while k<=len(self.paperNameList)-2:
-            ppr = pygame.image.load("image/titleBG/titleBG"+str(k)+".jpg")
-            self.paperList.append( ppr )
-            rect = ppr.get_rect()
-            rect.left = (width - rect.width) // 2
-            rect.top = (height - rect.height) // 2
-            self.paperRect.append( rect )
-            k += 1
-        self.paperAbbRect = []
-        # for each in self.paperList:
-        for j in (0, 1, 2, 3):
-            for i in (0, 1):
-                n = i+j*2
-                if n<=len(self.paperNameList)-2:
-                    self.paperAbbList.append( pygame.transform.smoothscale( self.paperList[n], (210, 140) ) )
-                    self.paperAbbRect.append( self.addSymm( pygame.transform.smoothscale( self.paperList[n], (210, 140) ), self.paperX[i], self.paperY[j] ) )
-                else:
-                    self.paperAbbList.append( pygame.transform.smoothscale( self.card, (210, 140) ) )
-                    self.paperAbbRect.append( self.addSymm( pygame.transform.smoothscale( self.card, (210, 140) ), self.paperX[i], self.paperY[j] ) )
         # Monster Description Card.
-        self.panel = Panel(180, 360, font)
-
+        self.panel = Panel(540, 300, font, align="left")
         # Init collection progress
         self.renewProgress()
 
-    def roll(self, coeffRoll):
-        '''roll函数：用于改变图鉴的竖直方向显示。两个参数，取值只能为1或-1.
-            (-1, 1)表示页面向下滑动；(1,-1)表示页面向上滑动。'''
-        if not self.rollerBars[self.curSub].roll(coeffRoll):
-            return False
-        #self.rollerY[self.curSub] += ( coeffRoll * self.liftY[self.curSub] )
-        if self.curSub==0:
-            for i in (1,2,3,4,5,6,7):     # 逐关地初始化VMons的rect信息。
-                self.cardY[i-1] += ( -coeffRoll * 40 )
-                for each in self.monsList[i]:
-                    self.monsList[i][each].rect.top += ( -coeffRoll * 40 )
-        elif self.curSub==1:
-            for i in ( 0, 1, 2, 3 ):
-                self.paperY[i] += ( -coeffRoll * 18 )
-
     def renderWindow(self, pos, font):
         # clear the window canvas.
-        self.window.fill( (0,0,0,0) )
-        self.window.fill( (20, 20, 20, 160) )
-        self.rollerBars[0].paint(self.window)
-
+        self.window.fill( (0,0,0, 0) )
+        self.window.fill( (20,20,20, 180) )
         lgg = REC_DATA["SYS_SET"]["LGG"]
         
+        # Chapter title
+        drawRect( 10, self.cardY[0]+160, self.width-20, 20, (190,190,190,60), self.window )
+        self.addTXT(self.stgName[self.curSub][lgg], font[lgg], (250,250,250), self.width//2, self.cardY[0]+170)
+
         chosen = ()
-        for i in (1,2,3,4,5,6,7):          # 逐chapter地打印
-            # Chapter title
-            drawRect( 5, self.cardY[i-1]+190, self.width-10, 20, (180,180,180,60), self.window )
-            self.addTXT([f"Chapter {i}",f"第{i}章"][lgg], font[lgg], (250,250,250), self.width//2-240, self.cardY[i-1]+200)
-            self.addTXT(self.stgName[i-1][lgg], font[lgg], (250,250,250), self.width//2, self.cardY[i-1]+200)
-            
-            # 处理每一关中的所有VMons
-            for each in self.monsList[i]:
-                c = self.monsList[i][each].rect
-                self.window.blit( self.card, c )    # card背景
-                # 把monster图片blit到cardbase上。
-                if self.monsList[i][each].acc:
-                    self.addSymm( self.monsList[i][each].image, c.left+c.width//2-self.width//2, c.top+c.height//2-self.height//2 )
-                else:
-                    self.addSymm( self.monsList[0].image, c.left+c.width//2-self.width//2, c.top+c.height//2-self.height//2 )
-                # 若在等待选中时鼠标悬停，高亮显示
-                if ( c.left < pos[0] < c.right ) and ( c.top < pos[1] < c.bottom ) or self.monsList[i][each]==self.display:
-                    self.window.blit( self.cardOn, c )
-                    drawRect( c.left, c.bottom-40, c.width, 20, (255,255,255,190), self.window )
-                    self.addTXT(self.monsList[i][each].name[lgg], font[lgg], (0,0,0), c.left+c.width//2, c.bottom-30)
-                    if ( c.left < pos[0] < c.right ) and ( c.top < pos[1] < c.bottom ):
-                        chosen = (i, each)
-
+        # 仅绘制当前章节的怪物
+        cp_list = self.monsList[self.curSub+1]
+        for each in cp_list:   # monsList[0]是空白mons，从1开始是第一章
+            c = cp_list[each].rect
+            self.window.blit( self.card, c )    # card背景
+            # 把monster图片blit到cardbase上。
+            if cp_list[each].acc:
+                self.addSymm( cp_list[each].image, c.left+c.width//2-self.width//2, c.top+c.height//2-self.height//2 )
+            else:
+                self.addSymm( self.monsList[0].image, c.left+c.width//2-self.width//2, c.top+c.height//2-self.height//2 )
+            # 若已选中，加一个边框
+            if cp_list[each]==self.display:
+                pygame.draw.rect( self.window, (255,255,255,200), c, 3 )
+            # 若在等待选中时鼠标悬停，高亮显示
+            if ( c.left < pos[0] < c.right ) and ( c.top < pos[1] < c.bottom ):
+                self.window.blit( self.cardOn, c )
+                drawRect( c.left, c.bottom-20, c.width, 20, (255,255,255,180), self.window )
+                self.addTXT(cp_list[each].name[lgg], font[lgg], (0,0,0), c.left+c.width//2, c.bottom-10)
+                chosen = (self.curSub+1, each)
+        # 显示是否是当前正在使用的壁纸。
+        '''if i+j*2==REC_DATA["SYS_SET"]["PAPERNO"]:
+            self.addSymm( pygame.image.load("image/active.png").convert_alpha(), self.paperX[i]+90, self.paperY[j]+60 )'''
         return chosen
-
-    def renderGallery(self, pos, font):
-        # clear the window canvas.
-        self.window.fill( (0,0,0,0) )
-        self.window.fill( (20, 20, 20, 160) )
-        lgg = REC_DATA["SYS_SET"]["LGG"]
-
-        for j in (0, 1, 2, 3):
-            for i in (0, 1):
-                self.paperAbbRect[i+j*2] = self.addSymm( self.paperAbbList[i+j*2], self.paperX[i], self.paperY[j] )
-                p = self.paperAbbRect[i+j*2]
-                # 加壁纸名字
-                drawRect( p.left, p.bottom-20, p.width, 20, (255,255,255,145), self.window )
-                if i+j*2<=len(self.paperNameList)-2:
-                    txt = self.paperNameList[i+j*2+1][lgg]
-                else:
-                    txt = self.paperNameList[0][lgg]
-                self.addTXT( txt, font[lgg], (0,0,0), self.width//2 + self.paperX[i], self.height*0.6 + self.paperY[j] )
-                # 鼠标悬停，加框
-                if ( p.left < pos[0] < p.right ) and ( p.top < pos[1] < p.bottom ):
-                    pygame.draw.rect( self.window, (255,255,255,170), p, 3 )
-                # 显示是否是当前正在使用的壁纸。
-                if i+j*2==self.activePaper:
-                    self.addSymm( pygame.image.load("image/active.png").convert_alpha(), self.paperX[i]+90, self.paperY[j]+60 )
-        
-        self.rollerBars[1].paint(self.window)
     
     def selectMons(self, i, j, tag=None):
         if not tag:
@@ -672,12 +616,14 @@ class Collection():
                         self.panel.addItem( txt )
                     else:
                         continue
-            for child in curMons.child:
-                cname = MB[child].name
-                self.panel.addItem( TextButton(160, 30,
-                    {"default":("Deriva:"+cname[0],"衍生物："+cname[1])}, "default", self.panel.font),
-                    tag=child
-                )
+            if curMons.child:
+                self.panel.addItem( ("Deriva: ","衍生物：") )
+                for child in curMons.child:
+                    cname = MB[child].name
+                    self.panel.addItem( TextButton(140, 28,
+                        {"default": cname}, "default", self.panel.font, rgba=(180,120,20,180)),
+                        tag=child, inline=True
+                    )
             # Desc Txt
             i = 0
             self.panel.addItem( ("","") )
@@ -712,19 +658,14 @@ class Collection():
                         continue
         
     def renewProgress(self):
-        for content in self.subject:
+        for i in self.subject:
             total = 0
             avail = 0
-            if content==0:
-                for i in (1,2,3,4,5,6,7):
-                    for each in self.monsList[i]:
-                        total += 1
-                        if self.monsList[i][each].acc:
-                            avail += 1
-            elif content==1:
-                total = 8
-                avail = len(self.paperNameList)-1
-            self.progress[content] = (f"{avail}/{total}", f"{avail}/{total}")
+            for each in self.monsList[i+1]:
+                total += 1
+                if self.monsList[i+1][each].acc:
+                    avail += 1
+            self.progress[i] = (f"{avail}/{total}", f"{avail}/{total}")
                 
     def addSymm(self, image, x, y):    # Surface对象； x，y为正负（偏离中心点）像素值
         rect = image.get_rect()
@@ -741,7 +682,6 @@ class Collection():
         rect.top = y - rect.height//2
         self.window.blit( txt, rect )
 
-# -------------------
 class VMons():
     def __init__( self, cate, coord, desc, src ):
         self.attr = MB[cate]    # attr为database模块中的Mons结构
@@ -757,7 +697,7 @@ class VMons():
         # 将整段desc文字分割为整齐的多行
         # 0-英文，1-中文
         self.desc = []
-        vol = [20, 10]
+        vol = [50, 25]
         for i in [0,1]:
             txt = desc[i]
             self.desc.append( [] )
@@ -803,15 +743,15 @@ class HeroBook():
         # 检测英雄可用性
         # 英雄解锁：Knight       Prince        Huntress       King
         self.accList = [ True, False, False, False, False, False, False ]
-        i = 0   # 辅助变量，用于指示当前的英雄在accList中的位置。如，1表示公主是否解锁。注意accInfo列表是按关卡顺序排列的。
+        i = 0   # i指示当前的英雄在accList中的序号。ie.1表示公主是否解锁。
         for stgStar in REC_DATA["CHAPTER_REC"]:
             i += 1
-            if int( stgStar ) >= 0 and i < 7: # 如果该关已通过，则该关卡对应的英雄设为True（已解锁）
+            if int(stgStar)>0 and i<7: # 该关已通过任意难度，则该关卡对应的英雄已解锁
                 self.accList[i] = True
         self.heroList = []
         # name, acc,   hp, dmg, rDmg,   desc, note
         self.heroList.append( VHero( 
-            0, ("Knight","骑士"), self.accList[0], (960,50), (140,10), (12,1), ("Normal","中"), 
+            0, ("Knight","骑士"), self.accList[0], (960,50), (140,10), (12,1), ("Normal","中"), 3200, 
             (("He's a speechless man who hides all","沉默寡言的骑士，把他一生的话"), 
             ("his words in the buried love towards Princess.","都藏在那颗爱公主的心当中。")), 
             ("Basic hero.","基本英雄。"), ("Justice Shower","正义洗礼"),
@@ -819,7 +759,7 @@ class HeroBook():
             ("each dealing at most 210 DMG.","每支至多造成210点伤害。"))
         ) )
         self.heroList.append( VHero( 
-            1, ("Princess","公主"), self.accList[1], (800,40), (200,15), (8,1), ("Normal","中"), 
+            1, ("Princess","公主"), self.accList[1], (800,40), (200,15), (8,1), ("Normal","中"), 3600,
             (("Beautiful Princess is not only good-looking,","美丽的公主可不只负责美丽，她"), 
             ("but also a good teacher of pain with her rifle.","手里的火枪会让你知道痛字怎么写。")), 
             ("Unlock by completing Stage 1 Dragon Castle.","通过第一关恶龙城堡解锁此英雄。"), ("Grenade Shots","榴弹散射"), 
@@ -827,7 +767,7 @@ class HeroBook():
             ("each dealing 180 AREA DMG.","每颗造成180点范围伤害。"))
         ) )
         self.heroList.append( VHero( 
-            2, ("Prince","王子"), self.accList[2], (1080,50), (120,10), (16,1), ("Short","短"), 
+            2, ("Prince","王子"), self.accList[2], (1080,50), (120,10), (16,1), ("Short","短"), 3200, 
             (("Prince's pony gives him tough build; and he","小马是王子的最爱，骑术给予他强健的体魄；"), 
             ("prefers short-ranged javelin - once missed he can","他也喜欢用射程短的标枪，因为当他失手时"), 
             ("fetch it so that not getting too embarrassed.","可以重新捡回来，不至于太过尴尬。")), 
@@ -836,44 +776,45 @@ class HeroBook():
             ("crushing enemies all the way out.","一直向前碾碎敌人。"))
         ) )
         self.heroList.append( VHero( 
-            3, ("Wizard","大法师"), self.accList[3], (840,40), (130,10), (10,1), ("Short","短"), 
+            3, ("Wizard","大法师"), self.accList[3], (840,40), (130,10), (10,1), ("Short","短"), 3200, 
             (("A master of natural elements, and is favored by","运用大自然元素力量的大师，有时也会"), 
             ("the king for his modest knowledge of alchemy.","炼炼丹，因此很受国王的待见。他的火球"), 
             ("His fireball deals extensive damage.","能造成范围伤害。")), 
             ("Unlock by completing Stage 3 Dead Yard.","通过第三关亡灵乐园解锁此英雄。"), ("Lightning Strikes","雷霆之力"),
-            (("Casts 4 lightening strikes that deal 320 DMG","释放4道闪电，命中当前视野内生命值最高"),
-            ("to enemy with highest hitpoints within current view.","的敌人，每道闪电造成320点伤害。"))
+            (("Casts 4 lightening strikes that deal 320 DMG to enemy","释放4道闪电，命中当前视野内生命值最高的"),
+            ("with highest hitpoints within current view and stun it.","敌人，每道闪电造成320点伤害，并将之眩晕。"))
         ) )
         self.heroList.append( VHero( 
-            4, ("Huntress","女猎手"), self.accList[4], (800,40), (42,2), (10,1), ("Long","长"), 
+            4, ("Huntress","女猎手"), self.accList[4], (800,40), (42,2), (10,1), ("Long","长"), 2900, 
             (("A dart master and skilled climber, as well as","一位飞镖大师、攀岩高手，也是"), 
             ("good friend of strayed animals. Her sharp darts will","流浪动物的爱心伙伴。她的飞镖"), 
             ("penetrate enemies' body, making notable damage!","会穿透敌人，造成出乎意料的效果！")), 
             ("Unlock by completing Stage 4 Ooze Underground.","通过第四关软泥雨林解锁此英雄。"), ("Boomerang","回旋重刃"),
-            (("Throws out the huge boomerang that bounces","投掷出巨大的回旋镖，在塔楼内弹射"),
-            ("all the way up, quickly clearing enemies around her.","而上，能够迅速清除她周身的敌人。"))
+            (("Throws out the huge boomerang that bounces all the way","投掷出巨大的回旋镖，在塔楼内弹射而上，"),
+            ("up, quickly clearing and stunning enemies around her.","能够迅速清除并眩晕她周身的敌人。"))
         ) )
         self.heroList.append( VHero( 
-            5, ("Priest","牧师"), self.accList[5], (800,40), (120,6), (10,1), ("Normal","中"), 
+            5, ("Priest","牧师"), self.accList[5], (800,40), (120,6), (10,1), ("Normal","中"), 3200, 
             (("The youngest but best priest throughout the kingdom.","她是全王国最年轻却最优秀的女牧师。她的"), 
             ("Her power partly comes from the faith, but mainly from","力量部分来自于信仰，但主要还是来自于紫色"), 
             ("these purple jade stones she collects.","的圣之玉石。")), 
             ("Unlock by completing Stage 5 Frozen Peak.","通过第五关冰雪孤峰解锁此英雄。"), ("Piety Chant","虔诚圣歌"),
             (("Casts a healing ring that heals herself and other", "释放一个能够治疗她自身和其他友军的治疗光圈，"),
-            ("allies within it, +420HP per hero instantly.", "迅速为每位英雄友方角色回复420点生命值。"))
+            ("allies within it, +240HP per hero instantly.", "迅速为每位英雄友方角色回复240点生命值。"))
         ) )
         self.heroList.append( VHero( 
-            6, ("King","国王"), self.accList[6], (920,50), (38,4), (9,1), ("Short","短"),
+            6, ("King","国王"), self.accList[6], (920,50), (38,4), (9,1), ("Short","短"), 3600, 
             (("Though elder and fatter these years, he's still","虽然这些年有些老了，也有些胖了，但他"), 
             ("awesome in battle. Quite good at rifle!","仍然是战场上令人敬畏的对手。非常擅用火枪！")),
             ("Unlock by completing Stage 6 Antique Factory.","通过第六关古旧工厂解锁此英雄。"), ("Royal Assist","皇家护卫"),
-            (("Summon a Royal Servant to assist you in the battle.","召唤一名皇家侍从协助你进行战斗。"),("",""))
+            (("Summon a Royal Servant to assist you in the battle.","召唤一名皇家侍从协助你进行战斗。"), 
+            ("You can only have one servant summoned at the same time.","你同时仅可拥有一名侍从。"))
         ) )
         # 侍从VHero
-        self.servantVHero = VHero( -1, ("Servant","侍从"), False, (800,0), (50,0), (1,0), ("Normal", "中"), 
+        self.servantVHero = VHero( -1, ("Servant","侍从"), False, (800,0), (50,0), (1,0), ("Normal", "中"), 3200, 
             (("","")), ("",""), ("-","-"), (("",""))
         )
-        self.notFound = pygame.image.load("image/notFound.png").convert_alpha()
+        self.notFound = pygame.image.load("image/lock.png").convert_alpha()
         self.icons = {
             "HP": pygame.image.load("image/icon_hp.png").convert_alpha(),
             "DMG": pygame.image.load("image/icon_dmg.png").convert_alpha(),
@@ -1001,7 +942,10 @@ class HeroBook():
                 for statement in hero.desc:
                     self.addTXT( statement, fontSmall, language, (0,0,0), 0, dscY)
                     dscY += 24
-
+            
+            # check whether the current hero is chosen
+            if self.pointer==self.curHero[self.playerNo]:
+                self.addSymm( pygame.image.load("image/active.png"), 40, -260 )
         # Unlock condition.
         self.addTXT( hero.note, fontSmall, language, (60,60,60), 0, dscRect.bottom-self.windowSize[1]//2-20)
         return (chosenAtt, AttBars[chosenAtt]) # 返回选中的属性项名称和其rect.
@@ -1102,11 +1046,10 @@ class HeroBook():
         pygame.draw.rect( surface, shadeColor, shadow )
         return outRect
 
-# -------------------
 class VHero():
     alloSnd = None
     
-    def __init__(self, no, name, acc, hp, dmg, cnt, R, desc, note, spName, spDesc):
+    def __init__(self, no, name, acc, hp, dmg, cnt, R, superPowerFull, desc, note, spName, spDesc):
         self.no = int(no)
         self.name = name
         self.spName = spName
@@ -1117,6 +1060,7 @@ class VHero():
         self.range = R                # shoot range
         self.desc = desc
         self.spDesc = spDesc
+        self.superPowerFull = superPowerFull
         self.note = note
         if not VHero.alloSnd:
             VHero.alloSnd = pygame.mixer.Sound("audio/coin.wav")
@@ -1129,7 +1073,6 @@ class VHero():
             tag = name[0].lower()
             self.image = pygame.image.load("image/"+tag+"/"+tag+".png").convert_alpha()
             self.brand = pygame.image.load("image/"+tag+"/brand.png").convert_alpha()
-            self.arrowImg = pygame.image.load("image/"+tag+"/supAmmo.png").convert_alpha()
             self.voice = pygame.mixer.Sound("audio/"+tag+"/"+tag+"C.wav")
             self.spIcon = pygame.image.load("image/"+tag+"/superPowerIcon.png").convert_alpha()
             # exp & level information
@@ -1143,7 +1086,8 @@ class VHero():
             self.dmg += self.at_lvls["DMG"]*self.dmgInc
             self.cnt += self.at_lvls["CNT"]*self.cntInc
             self.crit += self.at_lvls["CRIT"]*self.critInc
-            self.nxtDic = {1:100, 2:200, 3:400, 4:800, 5:1200, 6:1500, 7:1800, 8:2100, 9:2100} # 当前级，升到下一级所需的经验值。最高可升至第9级。
+            # 升级量表。（当前级：升到下一级所需的经验值。）最高可升至第10级。
+            self.nxtDic = {1:100, 2:200, 3:400, 4:800, 5:1200, 6:1500, 7:1800, 8:2100, 9:2400, 10:2400}
             self.nxtLvl = self.nxtDic[self.lvl]
         else:
             self.lvl = 1
@@ -1205,6 +1149,7 @@ class VHero():
     def addGem(self, num):
         REC_DATA["GEM"] += num
 
+
 # ==============================================================================================
 # ==============================================================================================
 class Bazaar():
@@ -1220,8 +1165,8 @@ class Bazaar():
         self.taskPanel = Panel( 210, 140, self.fntSet[1], title=("Current Task","当前任务") )
         self.taskPanel.addItem( self.task.descript )
         self.taskPanel.addItem( RichText(
-                (f"[Reward] {self.task.reward} _IMG_",f"【报酬】 {self.task.reward} _IMG_"), 
-                pygame.image.load("image/gem.png").convert_alpha(), self.fntSet[1]
+                (f"[Reward] _IMG_{self.task.reward}",f"【报酬】_IMG_{self.task.reward}"), 
+                pygame.image.load("image/gem0.png").convert_alpha(), self.fntSet[1]
             ) 
         )
         self.taskPanel.addItem( (f"[Progress] {self.task.progress}/{self.task.num}",f"【进度】 {self.task.progress}/{self.task.num}") )
@@ -1237,7 +1182,7 @@ class Bazaar():
         self.reroll_cost = 1    # 刷新商铺所需宝石数
         self.reroll_tip = RichText( 
             (f" _IMG_ {self.reroll_cost}",f" _IMG_ {self.reroll_cost}"), 
-            pygame.image.load("image/gem.png").convert_alpha(), self.fntSet[1]
+            pygame.image.load("image/gem0.png").convert_alpha(), self.fntSet[1]
         )
         self.stonePanels = [RunestonePanel(self.fntSet[1], tag) for tag in RB]
         self.onsale = sample(self.stonePanels, 3)
@@ -1252,7 +1197,6 @@ class Bazaar():
         ## 1.Version Checker & Downloader section
         self.window.fill( (0,0,0,0) )
         language = REC_DATA["SYS_SET"]["LGG"]
-        #y = self.rollerBar.out_y
         y = 30
         # Title0
         drawRect( 10, y, self.windowSize[0]-20, self.yp, (0,0,0,120), self.window )
@@ -1261,9 +1205,6 @@ class Bazaar():
         mid_y = title0.top+title0.height//2
         switchButton.paint(self.window, self.windowSize[0]-50, mid_y, pos)
         self.reroll_tip.paint(self.window, self.windowSize[0]-105, mid_y)
-        # left gem info
-        self.addSymm( pygame.image.load("image/gem.png").convert_alpha(), -260, mid_y+7 )
-        self.addTXT( language, [ str(REC_DATA['GEM']) ]*2, fntSet[2], -220, mid_y-7 )
         y += self.yp
 
         self.spacing = 190
@@ -1276,8 +1217,8 @@ class Bazaar():
                 self.currentKey = panel.tag
 
         y += 240
-
-        wmRect = self.addSymm( self.merchant_woman, 0, self.window.get_height()-150 )
+        # my storage.
+        wmRect = self.addSymm( self.merchant_woman, 0, self.window.get_height()-140 )
         #self.myStonePanel.paint(self.window, 200, y+100, pos)  # 由main外部绘制
 
         if ( 0 <= pos[0] <= self.windowSize[0] ):
@@ -1319,7 +1260,7 @@ class Bazaar():
             reward = None
             if self.task.claim_reward():
                 reward = self.task.reward
-            # 2. change new task
+            # 2. change new task: chapters that have been unlocked can contribute tasks
             cpComp = [1 if star>=0 else 0 for star in REC_DATA["CHAPTER_REC"]]
             tag_pool = [ tag for tag in list(TB) if TB[tag].pres<=sum(cpComp) and tag!=self.task.tag ]
             new_tag = choice(tag_pool)
@@ -1329,8 +1270,8 @@ class Bazaar():
             # 4. update task panel
             self.taskPanel.updateText(0, self.task.descript)
             self.taskPanel.updateText(1, RichText(
-                    (f"[Reward] {self.task.reward} _IMG_",f"【报酬】 {self.task.reward} _IMG_"), 
-                    pygame.image.load("image/gem.png").convert_alpha(), self.fntSet[1]
+                    (f"[Reward] _IMG_{self.task.reward}",f"【报酬】_IMG_{self.task.reward}"), 
+                    pygame.image.load("image/gem0.png").convert_alpha(), self.fntSet[1]
                 ) 
             )
             self.taskPanel.updateText(2, (f"[Progress] {self.task.progress}/{self.task.num}",f"【进度】 {self.task.progress}/{self.task.num}"))
@@ -1372,8 +1313,8 @@ class RunestonePanel(Panel):
         if tag:
             Panel.__init__(self, 170, 180, font, title=RB[tag].name, rgba=(70,60,0,140))
             self.addItem( pygame.image.load(f"image/runestone/{tag}.png").convert_alpha() )
-            self.addItem( RichText( (f" _IMG_  {RB[tag].cost}",f" _IMG_  {RB[tag].cost}"), 
-                pygame.image.load("image/gem.png").convert_alpha(), self.font) 
+            self.addItem( RichText( (f"_IMG_ {RB[tag].cost}",f"_IMG_ {RB[tag].cost}"), 
+                pygame.image.load("image/gem0.png").convert_alpha(), self.font) 
             )
             self.addItem( TextButton(150, 30, {"default":("Purchase","购买")}, "default", font, rgba=(60,120,30,210)), tag="purchase" )
         else:
@@ -1381,7 +1322,7 @@ class RunestonePanel(Panel):
 
 class MyStonePanel(Panel):
     def __init__(self, font):
-        Panel.__init__( self, 210, 180, font, title=("My Runstones","我的符石") )
+        Panel.__init__( self, 220, 200, font, title=("My Runstones","我的符石") )#, rgba=(0,0,0,0) )
         self.update_panel()
         # for receiving stones
         self.image = self.surf
@@ -1392,7 +1333,7 @@ class MyStonePanel(Panel):
         self.title = ("My Runstones","我的符石")
         for tag in REC_DATA["STONE"]:
             self.addItem( 
-                RichText( (f"_IMG_\t{RB[tag].name[0]}\t\t{REC_DATA['STONE'][tag]}",f"_IMG_\t{RB[tag].name[1]}\t\t{REC_DATA['STONE'][tag]}"), 
+                RichText( (f"_IMG_  {RB[tag].name[0]}  {REC_DATA['STONE'][tag]}",f"_IMG_\t{RB[tag].name[1]}\t\t{REC_DATA['STONE'][tag]}"), 
                     pygame.image.load(f"image/runestone/{tag}.png").convert_alpha(), self.font ) 
             )
     
@@ -1401,7 +1342,8 @@ class MyStonePanel(Panel):
         # This just respond to animation.
         self.update_panel()
         pygame.mixer.Sound("audio/coin.wav").play(0)
-        
+
+
 # ==============================================================================================
 # ==============================================================================================
 import requests
@@ -1419,7 +1361,7 @@ class Settings():
     chosenKey = ""
     chosenRect = None
     pNo = 1             # 初始为显示玩家1的键位设置
-    yp = 42             # Y的增加距离
+    yp = 40             # Y的增加距离
     but_x = 210         # switch按钮的水平位置
 
     # Dictionary for storing the key info of two players
@@ -1428,9 +1370,13 @@ class Settings():
     keyNm = {}          # 当前显示的keyDic里的对应键名(i.e. A, SPACE,[6])
     versInfo = []
 
-    def __init__(self, width, height, font):
-        self.instruction = {"rightOpt":pygame.image.load("image/Next.png"), 
-            "leftOpt":pygame.transform.flip( pygame.image.load("image/Next.png"), True, False) }
+    paperList = []     # 壁纸原画信息列表
+    subject = { 0:("System","系统"), 1:("Joystick","操作") }
+
+    def __init__(self, width, height, font, platf="self"):
+        self.instruction = {"leftOpt":pygame.image.load("image/Next.png"), 
+            "rightOpt":pygame.transform.flip( pygame.image.load("image/Next.png"), True, False) }
+        self.curSub = 0
         # ===============================================================
         # key dictionary(字典value为按键在pygame中的标识码)
         kd1, kd2 = REC_DATA["KEY_SET"]
@@ -1441,219 +1387,199 @@ class Settings():
         self.chosenRect = self.currentRect = None
         self.windowSize = (width, height)
         self.window = pygame.Surface( self.windowSize ).convert_alpha()
-        # 创建滚动条对象
-        self.rollerBar = RollerBar(30, rollerStep=45, pageStep=8)
         # =========版本信息部分=========
         # Check if there is new version in the server
         self.newvers = ''
         self.updateFlag = 1     # 可取四个值：-1, 0, 1是游戏启动时初始状态的值，2是下载完成后才会取到的值。
-        self.checkVersion(init=True)     # NOTE:此函数会更新newvers和updateFlag两项值。
+        if platf=="self":
+            self.checkVersion(init=True)     # NOTE:此函数会更新newvers和updateFlag两项值。
         self.downloader = None
         # 版本更新选项按钮
-        self.updateButton = TextButton(160, 40,
+        self.updateButton = TextButton(160, 36,
                         {'download':("Download","下载"), 'cancel':("Cancel","取消"), 'check':("Check","检查")}, 'download',
-                        font)
-        # =========记录部分===========
-        # REC step 1. 从本地record.data导入文件（已在database中自动完成）
+                        font, rgba=(220,210,20,180))
+        # ==========记录部分===========
+        # REC step 1. 从本地./record.sav导入文件（已在database中自动完成）
         self.IDlines = {}
         self.tmp_nickname = REC_DATA["NICK_NAME"]
         self.tmp_game_id = REC_DATA["GAME_ID"]
         self.accExist = False
         #self.accessDB(op="delete")
-
+        # ========wallpaper部分=========
+        # 1.从指定路径读取所有jpg文件
+        jpg_list = [ f for f in os.listdir("image/titleBG") if os.path.splitext(f)[-1]==".jpg" ]
+        #print(jpg_list)
+        # 2.过滤文件名不合法的jpg文件，形成本次壁纸集
+        self.paperList = []
+        for jpg in jpg_list:
+            try:
+                name_string = jpg.split(".")[0]
+                e, EN, CN = name_string.split("_")  # 格式需为*_*_*.jpg
+                #print(e,EN,CN)
+                assert int(e)>0 and int(e)<8        # 第二位需为数字，且取1-7（自然效果编号）
+            except:
+                continue
+            else:
+                # 读取jpg并加入列表中（字典：{壁纸名，特效号，surface对象}）
+                self.paperList.append( {"name": (EN, CN), "e": int(e), "p":pygame.image.load(f"image/titleBG/{jpg}")} )
+        # 3.判断以往的序号是否超出本次数量范围，若超出则重置为0
+        if REC_DATA["SYS_SET"]["PAPERNO"]>=len(self.paperList):
+            REC_DATA["SYS_SET"]["PAPERNO"] = 0
+    
     # Setting window --
     def renderWindow(self, fntSet, pos, switchButton):
         ## 1.Version Checker & Downloader section
         self.window.fill( (0,0,0,0) )
-        y = self.rollerBar.out_y
-        language = REC_DATA["SYS_SET"]["LGG"]
-        # Title
-        drawRect( 10, y, self.windowSize[0]-20, self.yp, (0,0,0,120), self.window )
-        self.addTXT( language, ["Version Update","版本更新"], fntSet[2], 0, y )
-        y += self.yp
-
-        # Content
-        if self.downloader:
-            self.updateButton.draw_text(label_key='cancel')
-            button = self.updateButton.paint(self.window, self.windowSize[0]-95, y+21, pos)
-            eng = f"Progress: {self.downloader.progress['prog']}  [{self.downloader.progress['speed']}]"
-            chn = f"下载进度: {self.downloader.progress['prog']}  [{self.downloader.progress['speed']}]"
-            self.addTXT( language, [eng,chn], fntSet[1], 20, y, midX=False )
-            if self.downloader.progress['prog'] == '100%':
-                self.closeDownload()
-                return
-        else:
-            if self.updateFlag == 1:
-                self.addTXT( language, [f"Already the latest version {self.newvers}.",f"已是最新版本{self.newvers}。"], fntSet[1], 20, y, midX=False )
-            elif self.updateFlag == 0:
-                self.updateButton.draw_text(label_key='download')
-                button = self.updateButton.paint(self.window, self.windowSize[0]-95, y+21, pos)
-                self.addTXT( language, [f"Current {VERSION}, {self.newvers} is accessible.",f"当前{VERSION}，新版本{self.newvers}可下载。"], fntSet[1], 20, y, midX=False )
-            elif self.updateFlag == -1:
-                self.updateButton.draw_text(label_key='check')
-                button = self.updateButton.paint(self.window, self.windowSize[0]-95, y+21, pos)
-                self.addTXT( language, [f"Check fails: network error. Current {self.newvers}.",f"版本检测失败：网络故障。当前{self.newvers}。"], fntSet[1], 20, y, midX=False )
-            elif self.updateFlag == 2:
-                self.addTXT( language, [f"Successfully installed {self.newvers}. Please Check your neighbor folder.",f"已成功安装{self.newvers}。请检查相邻文件夹。"], fntSet[1], 20, y, midX=False )
-        y += self.yp
-
-        ## 2.Systematic Settings
+        self.window.fill( (20,20,20, 180) )
+        y = 20
         x = 110  # key和内容距离中线的偏移
-        drawRect( 10, y, self.windowSize[0]-20, self.yp, (0,0,0,120), self.window )
-        self.addTXT( language, ("System Settings","系统设置"), fntSet[2], 0, y )
-        y += self.yp
-        # 语言设置行
-        lggRect = self.addTXT( language, ("Language","语言"), fntSet[2], -x, y )
-        if language == 0:
-            self.addTXT( language, ("English","英语"), fntSet[2], x, y )
-        elif language == 1:
-            self.addTXT( language, ("Chinese","中文"), fntSet[2], x, y )
-        if self.chosenKey=="language":  # 若被选中，将之高亮
-            self.drawFrame( lggRect )
-            self.addSymm( self.instruction["leftOpt"], x-90, lggRect.top+lggRect.height//2 )
-            self.addSymm( self.instruction["rightOpt"], x+90, lggRect.top+lggRect.height//2 )
-        y += self.yp
-        # 音量设置行
-        volRect = self.addTXT( language, ("BGM Volume","背景音乐音量"), fntSet[2], -x, y )
-        self.addTXT( language, ("%d"%REC_DATA["SYS_SET"]["VOL"],"%d"%REC_DATA["SYS_SET"]["VOL"]), fntSet[2], x, y )
-        if self.chosenKey=="volume":  # 若被选中，将之高亮
-            self.drawFrame( volRect )
-            self.addSymm( self.instruction["leftOpt"], x-90, volRect.top+volRect.height//2 )
-            self.addSymm( self.instruction["rightOpt"], x+90, volRect.top+volRect.height//2 )
-        y += self.yp
-        # 显示方式设置行
-        dspRect = self.addTXT( language, ("Display","显示方式"), fntSet[2], -x, y )
-        if REC_DATA["SYS_SET"]["DISPLAY"]==0:
-            self.addTXT( language, ("WINDOW","窗口"), fntSet[2], x, y )
-        elif REC_DATA["SYS_SET"]["DISPLAY"]==1:
-            self.addTXT( language, ("FULLSCREEN","全屏"), fntSet[2], x, y )
-        if self.chosenKey=="display":  # 若被选中，将之高亮
-            self.drawFrame( dspRect )
-            self.addSymm( self.instruction["leftOpt"], x-90, dspRect.top+dspRect.height//2 )
-            self.addSymm( self.instruction["rightOpt"], x+90, dspRect.top+dspRect.height//2 )
-        y += self.yp
-        
-        ## 3. Key Settings
-        # Title
-        drawRect( 10, y, self.windowSize[0]-20, self.yp, (0,0,0,120), self.window )
-        title0 = self.addTXT( language, ("Player Key [P%d]" %self.pNo,"角色键位【玩家%d】" %self.pNo), fntSet[2], 0, y )
-        switchButton.paint(self.window, 50, title0.top+title0.height//2, pos)
-        y += self.yp
-
-        # Contents
-        key1 = self.addTXT( language, ("Left","左"), fntSet[2], -x, y )
-        self.addTXT( language, (self.keyNm["key1"],self.keyNm["key1"]), fntSet[2], x, y )
-        if self.chosenKey=="leftKey":
-            self.drawFrame( key1 )
-        y += self.yp
-
-        key2 = self.addTXT( language, ("Right","右"), fntSet[2], -x, y )
-        self.addTXT( language, (self.keyNm["key2"],self.keyNm["key2"]), fntSet[2], x, y )
-        if self.chosenKey=="rightKey":
-            self.drawFrame( key2 )
-        y += self.yp
-
-        key3 = self.addTXT( language, ("Downward","下跳"), fntSet[2], -x, y )
-        self.addTXT( language, (self.keyNm["key3"],self.keyNm["key3"]), fntSet[2], x, y )
-        if self.chosenKey=="downKey":
-            self.drawFrame( key3 )
-        y += self.yp
-
-        key4 = self.addTXT( language, ("Shoot","射击"), fntSet[2], -x, y )
-        self.addTXT( language, (self.keyNm["key4"],self.keyNm["key4"]), fntSet[2], x, y )
-        if self.chosenKey=="shootKey":
-            self.drawFrame( key4 )
-        y += self.yp
-
-        key5 = self.addTXT( language, ("Jump","上跳"), fntSet[2], -x, y )
-        self.addTXT( language, (self.keyNm["key5"],self.keyNm["key5"]), fntSet[2], x, y )
-        if self.chosenKey=="jumpKey":
-            self.drawFrame( key5 )
-        y += self.yp
-
-        key6 = self.addTXT( language, ("Super Power","超级技能"), fntSet[2], -x, y )
-        self.addTXT( language, (self.keyNm["key6"],self.keyNm["key6"]), fntSet[2], x, y )
-        if self.chosenKey=="superKey":
-            self.drawFrame( key6 )
-        y += self.yp
-
-        key7 = self.addTXT( language, ("Use Bag Item","使用背包物品"), fntSet[2], -x, y )
-        self.addTXT( language, (self.keyNm["key7"],self.keyNm["key7"]), fntSet[2], x, y )
-        if self.chosenKey=="itemKey":
-            self.drawFrame( key7 )
-        y += self.yp
-
-        key8 = self.addTXT( language, ("Change Bag Item","切换背包物品"), fntSet[2], -x, y )
-        self.addTXT( language, (self.keyNm["key8"],self.keyNm["key8"]), fntSet[2], x, y )
-        if self.chosenKey=="bagKey":
-            self.drawFrame( key8 )
-        y += self.yp
-        
-        # 判断鼠标位置(pos应该由调用者进行了偏移处理)
+        language = REC_DATA["SYS_SET"]["LGG"]
         self.currentKey = ""
         self.currentRect = None
-        if ( 0 <= pos[0] <= self.windowSize[0] ):
-            if switchButton.hover_on(pos):
-                self.currentKey = "keyTitle"
-            elif ( key1.top < pos[1] < key1.bottom ):
-                self.drawFrame( key1 )
-                self.currentKey = "leftKey"
-                self.currentRect = key1
-            elif ( key2.top < pos[1] < key2.bottom ):
-                self.drawFrame( key2 )
-                self.currentKey = "rightKey"
-                self.currentRect = key2
-            elif ( key3.top < pos[1] < key3.bottom ):
-                self.drawFrame( key3 )
-                self.currentKey = "downKey"
-                self.currentRect = key3
-            elif  ( key4.top < pos[1] < key4.bottom ):
-                self.drawFrame( key4 )
-                self.currentKey = "shootKey"
-                self.currentRect = key4
-            elif ( key5.top < pos[1] < key5.bottom ):
-                self.drawFrame( key5 )
-                self.currentKey = "jumpKey"
-                self.currentRect = key5
-            elif ( key6.top < pos[1] < key6.bottom ):
-                self.drawFrame( key6 )
-                self.currentKey = "superKey"
-                self.currentRect = key6
-            elif ( key7.top < pos[1] < key7.bottom ):
-                self.drawFrame( key7 )
-                self.currentKey = "itemKey"
-                self.currentRect = key7
-            elif ( key8.top < pos[1] < key8.bottom ):
-                self.drawFrame( key8 )
-                self.currentKey = "bagKey"
-                self.currentRect = key8
-            elif (lggRect.top < pos[1] < lggRect.bottom ):
-                self.drawFrame( lggRect )
-                self.currentKey = "language"
-                self.currentRect = lggRect
-            elif (volRect.top < pos[1] < volRect.bottom ):
-                self.drawFrame( volRect )
-                self.currentKey = "volume"
-                self.currentRect = volRect
-            elif (dspRect.top < pos[1] < dspRect.bottom ):
-                self.drawFrame( dspRect )
-                self.currentKey = "display"
-                self.currentRect = dspRect
-            # Download part
-            elif (self.updateFlag == 0) and not self.downloader:
-                if ( button.top < pos[1] < button.bottom ) and ( button.left <= pos[0] <= button.right ):
-                    self.currentKey = "download"
-            elif self.downloader:
-                if ( button.top < pos[1] < button.bottom ) and ( button.left <= pos[0] <= button.right ):
-                    self.currentKey = "cancel"
-            elif (self.updateFlag == -1):
-                if ( button.top < pos[1] < button.bottom ) and ( button.left <= pos[0] <= button.right ):
-                    self.currentKey = "checkAgain"
-        
-        # 绘制RollerBar
-        self.rollerBar.paint(self.window)
 
-        return [title0,key1,key2,key3,key4,key5,key6,key7,key8,lggRect,volRect,dspRect]
+        if self.curSub==0:
+            ## 1.Systematic Settings
+            drawRect( 10, y, self.windowSize[0]-20, self.yp-6, (120,120,120,120), self.window )
+            self.addTXT( language, ("System Settings","系统设置"), fntSet[2], 0, y )
+            y += self.yp
+            # 语言设置行
+            lggRect = self.addTXT( language, ("Language","语言"), fntSet[2], -x, y )
+            if language == 0:
+                self.addTXT( language, ("English","英语"), fntSet[2], x, y )
+            elif language == 1:
+                self.addTXT( language, ("Chinese","中文"), fntSet[2], x, y )
+            if self.chosenKey=="language":  # 若被选中，将之高亮
+                self.drawFrame( lggRect )
+                self.addSymm( self.instruction["leftOpt"], x-90, lggRect.top+lggRect.height//2 )
+                self.addSymm( self.instruction["rightOpt"], x+90, lggRect.top+lggRect.height//2 )
+            y += self.yp
+            # 音量设置行
+            volRect = self.addTXT( language, ("BGM Volume","背景音乐音量"), fntSet[2], -x, y )
+            self.addTXT( language, ("%d"%REC_DATA["SYS_SET"]["VOL"],"%d"%REC_DATA["SYS_SET"]["VOL"]), fntSet[2], x, y )
+            if self.chosenKey=="volume":  # 若被选中，将之高亮
+                self.drawFrame( volRect )
+                self.addSymm( self.instruction["leftOpt"], x-90, volRect.top+volRect.height//2 )
+                self.addSymm( self.instruction["rightOpt"], x+90, volRect.top+volRect.height//2 )
+            y += self.yp
+            # 显示方式设置行
+            dspRect = self.addTXT( language, ("Display","显示方式"), fntSet[2], -x, y )
+            if REC_DATA["SYS_SET"]["DISPLAY"]==0:
+                self.addTXT( language, ("WINDOW","窗口"), fntSet[2], x, y )
+            elif REC_DATA["SYS_SET"]["DISPLAY"]==1:
+                self.addTXT( language, ("FULLSCREEN","全屏"), fntSet[2], x, y )
+            if self.chosenKey=="display":  # 若被选中，将之高亮
+                self.drawFrame( dspRect )
+                self.addSymm( self.instruction["leftOpt"], x-90, dspRect.top+dspRect.height//2 )
+                self.addSymm( self.instruction["rightOpt"], x+90, dspRect.top+dspRect.height//2 )
+            y += self.yp
+            # 主界面壁纸设置行
+            ppRect = self.addTXT( language, ("Wallpaper","主界面壁纸"), fntSet[2], -x, y )
+            self.addTXT( language, self.paperList[REC_DATA["SYS_SET"]["PAPERNO"]]["name"], fntSet[2], x, y )
+            if self.chosenKey=="paper":  # 若被选中，将之高亮
+                self.drawFrame( ppRect )
+                self.addSymm( self.instruction["leftOpt"], x-90, ppRect.top+ppRect.height//2 )
+                self.addSymm( self.instruction["rightOpt"], x+90, ppRect.top+ppRect.height//2 )
+            y += self.yp
+
+            ## 2. Version operation: Title
+            drawRect( 10, y, self.windowSize[0]-20, self.yp-6, (120,120,120,120), self.window )
+            self.addTXT( language, ["Version Update","版本更新"], fntSet[2], 0, y )
+            y += self.yp
+
+            # Content
+            self.addTXT( language, ("Game Version","游戏版本"), fntSet[2], -x, y )
+            self.addTXT( language, (VERSION,VERSION), fntSet[2], x, y )
+            y += self.yp
+            
+            if self.downloader:
+                self.updateButton.draw_text(label_key='cancel')
+                button = self.updateButton.paint(self.window, self.windowSize[0]-100, y+16, pos)
+                eng = f"Progress: {self.downloader.progress['prog']}  [{self.downloader.progress['speed']}]"
+                chn = f"下载进度: {self.downloader.progress['prog']}  [{self.downloader.progress['speed']}]"
+                self.addTXT( language, [eng,chn], fntSet[2], 20, y, midX=False )
+                if self.downloader.progress['prog'] == '100%':
+                    self.closeDownload()
+                    return
+            else:
+                if self.updateFlag == 1:
+                    self.addTXT( language, [f"Already the latest version.",f"已是最新版本。"], fntSet[2], 20, y, midX=False )
+                elif self.updateFlag == 0:
+                    self.updateButton.draw_text(label_key='download')
+                    button = self.updateButton.paint(self.window, self.windowSize[0]-100, y+16, pos)
+                    self.addTXT( language, [f"{self.newvers} is accessible.",f"新版本{self.newvers}可下载。"], fntSet[2], 20, y, midX=False )
+                elif self.updateFlag == -1:
+                    self.updateButton.draw_text(label_key='check')
+                    button = self.updateButton.paint(self.window, self.windowSize[0]-100, y+16, pos)
+                    self.addTXT( language, [f"Check fails: network error.",f"版本检测失败：网络故障。"], fntSet[2], 20, y, midX=False )
+                elif self.updateFlag == 2:
+                    self.addTXT( language, [f"{self.newvers} installed. Please Check your folder.",f"已安装{self.newvers}。请检查文件夹。"], fntSet[2], 20, y, midX=False )
+            y += self.yp
+
+            # 判断鼠标位置(pos应该由调用者进行了偏移处理)
+            if ( 0 <= pos[0] <= self.windowSize[0] ):
+                if (lggRect.top < pos[1] < lggRect.bottom ):
+                    self.drawFrame( lggRect )
+                    self.currentKey = "language"
+                    self.currentRect = lggRect
+                elif (volRect.top < pos[1] < volRect.bottom ):
+                    self.drawFrame( volRect )
+                    self.currentKey = "volume"
+                    self.currentRect = volRect
+                elif (dspRect.top < pos[1] < dspRect.bottom ):
+                    self.drawFrame( dspRect )
+                    self.currentKey = "display"
+                    self.currentRect = dspRect
+                elif (ppRect.top < pos[1] < ppRect.bottom ):
+                    self.drawFrame( ppRect )
+                    self.currentKey = "paper"
+                    self.currentRect = ppRect
+                # Download part
+                if (self.updateFlag == 0) and not self.downloader:
+                    if ( button.top < pos[1] < button.bottom ) and ( button.left <= pos[0] <= button.right ):
+                        self.currentKey = "download"
+                elif self.downloader:
+                    if ( button.top < pos[1] < button.bottom ) and ( button.left <= pos[0] <= button.right ):
+                        self.currentKey = "cancel"
+                elif (self.updateFlag == -1):
+                    if ( button.top < pos[1] < button.bottom ) and ( button.left <= pos[0] <= button.right ):
+                        self.currentKey = "checkAgain"
+
+        elif self.curSub == 1:
+            ## 3. Key Settings
+            # Title
+            drawRect( 10, y, self.windowSize[0]-20, self.yp-6, (120,120,120,120), self.window )
+            title0 = self.addTXT( language, ("Player Key [P%d]" %self.pNo,"角色键位【玩家%d】" %self.pNo), fntSet[2], 0, y )
+            switchButton.paint(self.window, 50, title0.top+title0.height//2, pos)
+            y += self.yp
+
+            # Contents
+            k_dict = {
+                "key1": {"tag": "leftKey", "name": ("Left","左"), "rect": None}, 
+                "key2": {"tag": "rightKey", "name": ("Right","右"), "rect": None}, 
+                "key3": {"tag": "downKey", "name": ("Downward","下跳"), "rect": None}, 
+                "key4": {"tag": "shootKey", "name": ("Shoot","射击"), "rect": None}, 
+                "key5": {"tag": "jumpKey", "name": ("Jump","上跳"), "rect": None}, 
+                "key6": {"tag": "superKey", "name": ("Super Power","超级技能"), "rect": None}, 
+                "key7": {"tag": "itemKey", "name": ("Use Props","使用道具"), "rect": None}, 
+                "key8": {"tag": "bagKey", "name": ("Change Props","切换道具"), "rect": None}, 
+            }
+            for key_n in k_dict:
+                k_dict[key_n]["rect"] = self.addTXT( language, k_dict[key_n]["name"], fntSet[2], -x, y )
+                self.addTXT( language, (self.keyNm[key_n],self.keyNm[key_n]), fntSet[2], x, y )
+                if self.chosenKey==k_dict[key_n]["tag"]:
+                    self.drawFrame( k_dict[key_n]["rect"] )
+                y += self.yp
+
+            # 判断鼠标位置(pos应该由调用者进行了偏移处理)
+            if ( 0 <= pos[0] <= self.windowSize[0] ):
+                if switchButton.hover_on(pos):
+                    self.currentKey = "keyTitle"
+                else:
+                    for key_n in k_dict:
+                        if ( k_dict[key_n]["rect"].top < pos[1] < k_dict[key_n]["rect"].bottom ):
+                            self.drawFrame( k_dict[key_n]["rect"] )
+                            self.currentRect = k_dict[key_n]["rect"]
+                            self.currentKey = k_dict[key_n]["tag"]
 
     def drawFrame(self, key):
         rect = ( (20,key.top-2), (self.windowSize[0]-40,key.height+4) )
@@ -1662,13 +1588,13 @@ class Settings():
     def changeKey(self, key):
         kList = []
         if self.pNo == 1:
-            self.keyDic1[self.currentKey] = key
+            self.keyDic1[self.chosenKey] = key
             self.renewKeyNm()
             for each in self.keyDic1:
                 kList.append( str(self.keyDic1[each]) )
             REC_DATA["KEY_SET"][0] = kList
         elif self.pNo == 2:
-            self.keyDic2[self.currentKey] = key
+            self.keyDic2[self.chosenKey] = key
             self.renewKeyNm()
             for each in self.keyDic2:
                 kList.append( str(self.keyDic2[each]) )
@@ -1679,6 +1605,9 @@ class Settings():
             ref = self.keyDic1
         elif self.pNo==2:
             ref = self.keyDic2
+        # 确保是整数而非字符串
+        for key in ref:
+            ref[key] = int(ref[key])
         self.keyNm = { "key1":pygame.key.name(ref["leftKey"]).upper(), "key2":pygame.key.name(ref["rightKey"]).upper(), 
             "key3":pygame.key.name(ref["downKey"]).upper(), "key4":pygame.key.name(ref["shootKey"]).upper(), 
             "key5":pygame.key.name(ref["jumpKey"]).upper(), "key6":pygame.key.name(ref["superKey"]).upper(), 
@@ -1733,13 +1662,18 @@ class Settings():
         try:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(SERVER_IP, port=22, username="root", password="******", timeout=8)  # 出于服务器安全考虑，密码已屏蔽
+            ssh.connect(SERVER_IP, port=22, username="root", password="Nc91130529", timeout=8)
             # 启用加密文件传输协议
             sftp = ssh.open_sftp()
             if op=="download":
-                sftp.get(f"{REMOTE_PATH}record_{self.tmp_game_id}.data", "record.data")
+                try:
+                    sftp.get(f"{REMOTE_PATH}record_{self.tmp_game_id}.sav", "./record.sav")
+                except: # 兼容旧版.data记录后缀
+                    sftp.get(f"{REMOTE_PATH}record_{self.tmp_game_id}.data", "./record.data")
+                    # 将record.data转换为record.sav
+                    database.data2sav()
             elif op=="upload":
-                sftp.put("record.data", f"{REMOTE_PATH}record_{self.tmp_game_id}.data")
+                sftp.put("./record.sav", f"{REMOTE_PATH}record_{self.tmp_game_id}.sav")
             # 下载完成后，自动更新程序数据
             database.reload_rec_data()
             return 1
@@ -1748,11 +1682,11 @@ class Settings():
             return -1
 
     def accessDB(self, op="read", data=None):
-        '''param op: "read" or "insert".'''
+        '''param op: "read", "insert" or "update.'''
         # 打开数据库连接。mysql端口号3306，utf-8编码，否则中文有可能会出现乱码。
-        # 专用的远程访问用户player，密码******(出于服务器安全考虑，密码已屏蔽)。游戏的数据库名称为knight_throde。
+        # 专用的远程访问用户player，密码123456->Nc91130529。游戏的数据库名称为knight_throde。
         try:
-            db = pymysql.connect("121.199.75.3", "player", "******", "knight_throde",
+            db = pymysql.connect("121.199.75.3", "player", "Nc91130529", "knight_throde",
                                 port=3306, charset='utf8', connect_timeout=8)
             # 使用 cursor() 方法创建一个游标对象 cursor
             cursor = db.cursor()
@@ -1821,7 +1755,7 @@ class Settings():
             # 若账户已存在，则检查密码是否一致
             if self.accExist:
                 if data==self.IDlines[self.tmp_game_id][1]:
-                    self.transmitFile(op="download")      # 访问服务器，并下载.data写入到本地
+                    self.transmitFile(op="download")      # 访问服务器，并下载.sav写入到本地
                     self._updateAccount()
                     return True
                 return False
@@ -1839,6 +1773,16 @@ class Settings():
             except:
                 return "failure"
         return "nicknameEx"
+
+    def reset_account(self, target, data):
+        if target=="password":
+            # 检查与之前的密码是否相同
+            if data==self.IDlines[ REC_DATA["GAME_ID"] ][1]:
+                return "samePwd"
+            else:
+                # 更新服务器端数据库密码
+                self.accessDB(op="update", data=data)
+                return "OK"
 
     def logout(self):
         self.tmp_nickname = "player0"
@@ -1875,12 +1819,12 @@ class Settings():
         return rect                   # 返回图片的位置信息以供更多操作
 
     def __del__(self):
-        '''只要程序结束（包括主动退出和异常退出），本类就会被析构，应该保证结束线程'''
+        '''只要程序结束（包括主动退出和异常退出），本类就会被析构，应保证结束线程'''
         self.closeDownload(complete=False)
 
-class Downloader(threading.Thread):
+class Downloader(Thread):
     def __init__(self, vers):
-        threading.Thread.__init__(self)
+        Thread.__init__(self)
         self.progress = {"prog":"0%", "speed":"0 K/S"}
         self.url = f'http://{SERVER_IP}/download/{vers}.zip'
         self.fname = f'KnightThrode_{vers.split("_")[-1]}.zip'
@@ -1944,9 +1888,10 @@ class Downloader(threading.Thread):
         self.running = False
 
 class AccountButton(Panel):
-    def __init__(self, font):
+    def __init__(self, font, mode="all"):
         Panel.__init__(self, 180, 50, font)
-        self.portrait = pygame.image.load("image/knight/brand.png")
+        self.mode = mode    # could be "all", "no_name"
+        self.portrait = pygame.image.load("image/Princess/brand.png")
         self.portrait = pygame.transform.smoothscale(self.portrait, (48,48))
         self.p_rect = self.portrait.get_rect()
         self.p_rect.left, self.p_rect.top = (1, 1)
@@ -1965,17 +1910,26 @@ class AccountButton(Panel):
         return False
     
     def reset(self):
+        # NICKNAME
         self.items.clear()
-        if REC_DATA["GAME_ID"] == 1:
-            self.addItem("Not Logged In")
-        else:
-            self.addItem(f"{REC_DATA['NICK_NAME']}")
-        self.addItem( RichText( (f"[ _IMG_ ] {REC_DATA['GEM']}",f"[ _IMG_ ] {REC_DATA['GEM']}"), 
-            pygame.image.load("image/gem.png").convert_alpha(), self.font) 
+        if self.mode == "all":
+            if REC_DATA["GAME_ID"] == 1:
+                self.addItem( ["|Not Logged In","|未登录"] )
+            else:
+                self.addItem( [f"|{REC_DATA['NICK_NAME']}"]*2 )
+        # Check GEM
+        self.gem_paint = REC_DATA['GEM']
+        self.addItem( RichText( (f"| _IMG_{REC_DATA['GEM']}",f"| _IMG_{REC_DATA['GEM']}"), 
+            pygame.image.load("image/gem0.png").convert_alpha(), self.font) 
         )
 
     def paint(self, screen, x, y, pos):
         '''cursor pos will be set to fit offset in this function'''
+        # before painting, automatically check whether 
+        # gem number showing is correct with database
+        if self.gem_paint != REC_DATA['GEM']:
+            self.reset()
+        
         self._setPos(x, y)
         self.surf.fill( self.bgColor )
         pos = (pos[0]-x+self.rect.width//2, pos[1]-y+self.rect.height//2)
@@ -1983,18 +1937,17 @@ class AccountButton(Panel):
         lgg = REC_DATA["SYS_SET"]["LGG"]
         # Paint portrait
         self.surf.blit(self.portrait, self.p_rect)
-        # Pain list items.
+        # Paint list items.
         for item in self.items:
-            if type(item) == str:
-                txt = self.font[1].render(item, True, (255,255,255))
+            if item["type"] == "Text":
+                txt = self.font[1].render(item["item"][lgg], True, (255,255,255))
                 rect = txt.get_rect()
                 rect.left = 4+self.p_rect.width
                 rect.top = in_y
                 self.surf.blit( txt, rect )
                 in_y += max(rect.height, 22)
-            elif type(item) == RichText:
-                item.paint(self.surf, 4+self.p_rect.width+item.rect[lgg].width//2, in_y+item.rect[lgg].height//2)
-                in_y += max(rect.height, 22)
+            elif item["type"] == "RichText":
+                item["item"].paint(self.surf, 4+self.p_rect.width+item["item"].rect[lgg].width//2, in_y+item["item"].rect[lgg].height//2)
         screen.blit(self.surf, self.rect)
         # paint bg if hovered on.
         if self.hover_on(pos):
@@ -2007,42 +1960,6 @@ class AccountButton(Panel):
         #REC_DATA["GEM"] += 1
         self.reset()
         pygame.mixer.Sound("audio/coin.wav").play(0)
-
-# ================Roller Bar class=====================
-class RollerBar:
-    rollerRange = (-180, 180)
-    dragButton = None
-    rect = None
-
-    def __init__(self, startY, rollerStep=20, pageStep=40):
-        self.rollerY = self.rollerRange[0]
-        self.rollerStep = rollerStep
-        self.pageStep = pageStep
-        if not RollerBar.dragButton:
-            RollerBar.dragButton = pygame.image.load("image/roller.png").convert_alpha()
-            RollerBar.rect = self.dragButton.get_rect()
-        # out_y是供外界读取的，表示了装载本RollerBar的页面实际数值的位置
-        self.out_y = startY
-
-    def roll(self, coeffRoll):
-        '''coeff参数，取值只能为1或-1。-1表示页面向下滑动。'''
-        self.rollerY += ( coeffRoll * self.rollerStep )
-        if (self.rollerY < self.rollerRange[0]) or (self.rollerY > self.rollerRange[1]):   # 向上或向下超出范围
-            self.rollerY -= ( coeffRoll * self.rollerStep )
-            return False
-        self.out_y -= ( coeffRoll * self.pageStep )
-        return True
-
-    def paint(self, surface):
-        # 竖线：拖动槽
-        s_size = surface.get_size()
-        pygame.draw.line( surface, (210,210,200), 
-            (s_size[0],s_size[1]//2+self.rollerRange[0]), (s_size[0],s_size[1]//2+self.rollerRange[1]), 7
-        )
-        # 拖动元素
-        self.rect.left = (s_size[0]-self.rect.width)// 2 + s_size[0]//2-4
-        self.rect.top = s_size[1]//2+self.rollerY - self.rect.height//2
-        surface.blit( self.dragButton, self.rect )
 
 # ================ TextBox Manager=====================
 class TextBoxManager:    
