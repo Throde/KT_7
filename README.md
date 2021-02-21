@@ -1,15 +1,16 @@
 # Project Introduction
-Knight Throde is a PC game based on Python (Pygame). More details can be found in the Chinese instruction pdf file.
+Knight Throde is a PC game based on Python (maily Pygame). More details can be found in the Chinese instruction pdf file.
 
 Our Chinese website of the game: www.knightthrode.cn
 
-# Developer's Account
-You can use this public developer's account to log in, so that you can quickly review all the game contents:
+# Developer/Tester's Account
+You can use the following public developer/tester's account to log in, so that you can quickly review all the game contents:
 
 Account Name: throde
+
 Password: 123456
 
-But if you want to experience the whole game flow from a player's perspective, you may need to register a new account for yourself. You will start fresh, and unlock chapters/heroes one by one.
+But if you want to experience the whole game flow from a player's perspective, you may need to register a new account for yourself. In this way you will start fresh, and unlock chapters/heroes one by one.
 
 # Missing Resources
 Resources (three folders-"image", "audio", and "font") could be found from game zip files. 
