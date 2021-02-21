@@ -24,7 +24,7 @@ from util import ImgButton, TextButton, RichButton, Panel, MsgManager, ImgSwitch
 
 # ======================================================================
 bg_size = width, height = 1280, 720  #或1280*800(均为16:10)
-PLATFORM = "steam"   # "self" or "steam". Treat differently on account.
+PLATFORM = "self"   # "self" or "steam". Treat differently on account.
 
 
 # ======================================================================
