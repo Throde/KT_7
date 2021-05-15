@@ -14,8 +14,8 @@ Password: g715
 
 To run the program, you simply need to run main.py. You can find notes about each module's duty at the beginning of each .py file.
 
-## Developer's Record
-You can use the given developer/tester's game record file so that you can quickly review all the game contents: record.sav
+## Developer's game record
+You can use the given developer's game record file so that you can quickly review all the game contents: record.sav
 
 But if you want to experience the whole game progress from a player's perspective, you may need to remove the given .sav file and then simply start the game (the program will create a new one for you). In this way you will start fresh, and unlock chapters/heroes one by one. 
 
