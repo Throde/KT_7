@@ -12,13 +12,11 @@ from random import choice, sample
 
 from database import MB, DT, REC_DATA, TB, RB
 import database
-from util import TextButton, ImgButton, Panel, RichText, TextBox
+from util import TextButton, ImgButton, Panel, RichText
 from util import generateShadow, drawRect
 
 
 VERSION = "KT_7.4.3"
-SERVER_IP = "121.199.75.3"
-REMOTE_PATH = "/var/www/KT_records/"
 
 
 # ==============================================================================================
@@ -1194,7 +1192,7 @@ class Bazaar():
     def renderWindow(self, fntSet, pos, switchButton):
         self.currentKey = ""
 
-        ## 1.Version Checker & Downloader section
+        ## 1.Version Checker
         self.window.fill( (0,0,0,0) )
         language = REC_DATA["SYS_SET"]["LGG"]
         y = 30
@@ -1373,7 +1371,7 @@ class Settings():
     paperList = []     # 壁纸原画信息列表
     subject = { 0:("System","系统"), 1:("Joystick","操作") }
 
-    def __init__(self, width, height, font, platf="self"):
+    def __init__(self, width, height, font):
         self.instruction = {"leftOpt":pygame.image.load("image/Next.png"), 
             "rightOpt":pygame.transform.flip( pygame.image.load("image/Next.png"), True, False) }
         self.curSub = 0
@@ -1388,23 +1386,12 @@ class Settings():
         self.windowSize = (width, height)
         self.window = pygame.Surface( self.windowSize ).convert_alpha()
         # =========版本信息部分=========
-        # Check if there is new version in the server
-        self.newvers = ''
-        self.updateFlag = 1     # 可取四个值：-1, 0, 1是游戏启动时初始状态的值，2是下载完成后才会取到的值。
-        if platf=="self":
-            self.checkVersion(init=True)     # NOTE:此函数会更新newvers和updateFlag两项值。
-        self.downloader = None
-        # 版本更新选项按钮
-        self.updateButton = TextButton(160, 36,
-                        {'download':("Download","下载"), 'cancel':("Cancel","取消"), 'check':("Check","检查")}, 'download',
-                        font, rgba=(220,210,20,180))
+        self.newvers = VERSION
         # ==========记录部分===========
         # REC step 1. 从本地./record.sav导入文件（已在database中自动完成）
         self.IDlines = {}
         self.tmp_nickname = REC_DATA["NICK_NAME"]
         self.tmp_game_id = REC_DATA["GAME_ID"]
-        self.accExist = False
-        #self.accessDB(op="delete")
         # ========wallpaper部分=========
         # 1.从指定路径读取所有jpg文件
         jpg_list = [ f for f in os.listdir("image/titleBG") if os.path.splitext(f)[-1]==".jpg" ]
@@ -1428,7 +1415,7 @@ class Settings():
     
     # Setting window --
     def renderWindow(self, fntSet, pos, switchButton):
-        ## 1.Version Checker & Downloader section
+        ## 1.Version Checker
         self.window.fill( (0,0,0,0) )
         self.window.fill( (20,20,20, 180) )
         y = 20
@@ -1490,30 +1477,6 @@ class Settings():
             self.addTXT( language, ("Game Version","游戏版本"), fntSet[2], -x, y )
             self.addTXT( language, (VERSION,VERSION), fntSet[2], x, y )
             y += self.yp
-            
-            if self.downloader:
-                self.updateButton.draw_text(label_key='cancel')
-                button = self.updateButton.paint(self.window, self.windowSize[0]-100, y+16, pos)
-                eng = f"Progress: {self.downloader.progress['prog']}  [{self.downloader.progress['speed']}]"
-                chn = f"下载进度: {self.downloader.progress['prog']}  [{self.downloader.progress['speed']}]"
-                self.addTXT( language, [eng,chn], fntSet[2], 20, y, midX=False )
-                if self.downloader.progress['prog'] == '100%':
-                    self.closeDownload()
-                    return
-            else:
-                if self.updateFlag == 1:
-                    self.addTXT( language, [f"Already the latest version.",f"已是最新版本。"], fntSet[2], 20, y, midX=False )
-                elif self.updateFlag == 0:
-                    self.updateButton.draw_text(label_key='download')
-                    button = self.updateButton.paint(self.window, self.windowSize[0]-100, y+16, pos)
-                    self.addTXT( language, [f"{self.newvers} is accessible.",f"新版本{self.newvers}可下载。"], fntSet[2], 20, y, midX=False )
-                elif self.updateFlag == -1:
-                    self.updateButton.draw_text(label_key='check')
-                    button = self.updateButton.paint(self.window, self.windowSize[0]-100, y+16, pos)
-                    self.addTXT( language, [f"Check fails: network error.",f"版本检测失败：网络故障。"], fntSet[2], 20, y, midX=False )
-                elif self.updateFlag == 2:
-                    self.addTXT( language, [f"{self.newvers} installed. Please Check your folder.",f"已安装{self.newvers}。请检查文件夹。"], fntSet[2], 20, y, midX=False )
-            y += self.yp
 
             # 判断鼠标位置(pos应该由调用者进行了偏移处理)
             if ( 0 <= pos[0] <= self.windowSize[0] ):
@@ -1533,16 +1496,6 @@ class Settings():
                     self.drawFrame( ppRect )
                     self.currentKey = "paper"
                     self.currentRect = ppRect
-                # Download part
-                if (self.updateFlag == 0) and not self.downloader:
-                    if ( button.top < pos[1] < button.bottom ) and ( button.left <= pos[0] <= button.right ):
-                        self.currentKey = "download"
-                elif self.downloader:
-                    if ( button.top < pos[1] < button.bottom ) and ( button.left <= pos[0] <= button.right ):
-                        self.currentKey = "cancel"
-                elif (self.updateFlag == -1):
-                    if ( button.top < pos[1] < button.bottom ) and ( button.left <= pos[0] <= button.right ):
-                        self.currentKey = "checkAgain"
 
         elif self.curSub == 1:
             ## 3. Key Settings
@@ -1620,183 +1573,6 @@ class Settings():
             self.pNo = 1
         self.renewKeyNm()
 
-    # Version & Account --
-    def startDownload(self):
-        self.downloader = Downloader( self.newvers )
-        self.downloader.start()
-    
-    def closeDownload(self, complete=True):
-        if self.downloader:
-            self.downloader.terminate()
-            self.downloader = None
-            if complete:
-                self.updateFlag = 2
-                pygame.mixer.Sound("audio/eatFruit.wav").play(0)
-        
-    def checkVersion(self, init=False):
-        '''return: 1-newest OK; 0-need updating; -1:network error'''
-        # 获取server上的主页信息
-        if init:
-            timeout = (3,7) # 分别是connect和read的限制
-        else:
-            timeout = 30    # 用户主动要求重新连接：超时均设置为30
-        try:
-            res = requests.get(f"http://{SERVER_IP}/index.html", timeout=timeout)
-            soup = BeautifulSoup(res.text,'html.parser') #把网页解析为BeautifulSoup对象
-            # 保留最新信息。当前格式：'KT_6.7.1'
-            self.newvers = soup.find("p", {"id":"latestversion"}).get_text().split("：")[1]
-            #print(self.newvers, VERSION, bool(self.newvers>VERSION))
-            if self.newvers>VERSION:       # 字符串比较：服务器信息>当前信息则需要更新
-                self.updateFlag = 0
-            else:               # 否则无需更新
-                self.updateFlag = 1
-        except:
-            self.newvers = VERSION  # 未检测成功，认为本地的就是最新版本
-            self.updateFlag = -1
-        finally:
-            return self.updateFlag  # 将状态返回，以直接提供信息（可不返回）
-        
-    def transmitFile(self, op="download"):
-        # 访问服务器，（1）根据本地存储的ID下载云端.rec文件，或（2）上传本地的.rec文件
-        # op: 'download' or 'upload'
-        try:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(SERVER_IP, port=22, username="root", password="Nc91130529", timeout=8)
-            # 启用加密文件传输协议
-            sftp = ssh.open_sftp()
-            if op=="download":
-                try:
-                    sftp.get(f"{REMOTE_PATH}record_{self.tmp_game_id}.sav", "./record.sav")
-                except: # 兼容旧版.data记录后缀
-                    sftp.get(f"{REMOTE_PATH}record_{self.tmp_game_id}.data", "./record.data")
-                    # 将record.data转换为record.sav
-                    database.data2sav()
-            elif op=="upload":
-                sftp.put("./record.sav", f"{REMOTE_PATH}record_{self.tmp_game_id}.sav")
-            # 下载完成后，自动更新程序数据
-            database.reload_rec_data()
-            return 1
-        except:
-            print(">> Fail to connect to Server. Please check connection. You can still play the game but the progress will not be saved.")
-            return -1
-
-    def accessDB(self, op="read", data=None):
-        '''param op: "read", "insert" or "update.'''
-        # 打开数据库连接。mysql端口号3306，utf-8编码，否则中文有可能会出现乱码。
-        # 专用的远程访问用户player，密码123456->Nc91130529。游戏的数据库名称为knight_throde。
-        try:
-            db = pymysql.connect("121.199.75.3", "player", "Nc91130529", "knight_throde",
-                                port=3306, charset='utf8', connect_timeout=8)
-            # 使用 cursor() 方法创建一个游标对象 cursor
-            cursor = db.cursor()
-            try:
-                # 执行SQL语句
-                if op=="read":
-                    sql = "SELECT * FROM user_info"
-                    cursor.execute(sql)
-                    results = cursor.fetchall() #获取全部结果集。fetchone()查询第一条数据
-                elif op=="insert":
-                    # 插入新数据记录。id会由服务器端的数据库自动分配+1。
-                    sql1 = f"INSERT INTO user_info SET username='{self.tmp_nickname}',password='{data}';"
-                    cursor.execute(sql1)
-                    db.commit()  # 事务提交
-                    # 再重新获取最后一条记录，得知服务器分配的ID
-                    sql2 = "SELECT * FROM user_info"
-                    cursor.execute(sql2)
-                    results = cursor.fetchall()
-                    self.tmp_game_id = results[-1][0]
-                elif op=="update":
-                    sql = f"UPDATE user_info SET password='{data}' WHERE user_id={REC_DATA['GAME_ID']}"
-                    cursor.execute(sql)
-                    db.commit()
-                    results = None
-                elif op=="delete":
-                    sql = "DELETE FROM user_info WHERE user_id=9"
-                    cursor.execute(sql)
-                    db.commit()
-                    results = None
-                # 处理结果
-                if not results: #判断是否为空。
-                    print("数据为空！")
-                else:
-                    for row in results:
-                        # row: [Id, Name, Password]
-                        self.IDlines[row[0]] = [row[1], row[2]]
-                    print(self.IDlines)
-            except Exception as e:
-                db.rollback()  # 如果出错就回滚数据库并且输出错误信息。
-                print("Error:{0}".format(e))
-            finally:
-                cursor.close()
-                db.close()  #关闭数据库。
-        except:
-            return -1   # 连接数据库出现问题
-        else:
-            return 1    # 操作成功
-
-    def checkAccount(self, data, type="nickname"):
-        '''检查所给的信息是否存在。data为用户输入，type为检测数据类型'''
-        if type=="nickname":
-            self.tmp_nickname = data
-            # 首先下载所有玩家信息的数据库，用于比对账号是否存在
-            self.IDlines = {}
-            if self.accessDB(op="read")==1:
-                self.accExist = False
-                for ID in self.IDlines:
-                    if data==self.IDlines[ID][0]:
-                        self.tmp_game_id = ID
-                        self.accExist = True
-                        return True
-                return True     # 返回真值，表示操作完成
-            else:
-                return False    # 返回假值，表示操作出现问题
-        elif type=="password":
-            # 若账户已存在，则检查密码是否一致
-            if self.accExist:
-                if data==self.IDlines[self.tmp_game_id][1]:
-                    self.transmitFile(op="download")      # 访问服务器，并下载.sav写入到本地
-                    self._updateAccount()
-                    return True
-                return False
-    
-    def register_account(self, data):
-        # 账号不存在，创建新号。data为新设的密码
-        if not self.accExist:
-            try:
-                # 更新服务器端数据库，分配得ID
-                self.accessDB(op="insert", data=data)   # will be given self.tmp_game_id
-                # 重置游戏记录
-                database.clear_rec_data()
-                self._updateAccount()
-                return "OK"
-            except:
-                return "failure"
-        return "nicknameEx"
-
-    def reset_account(self, target, data):
-        if target=="password":
-            # 检查与之前的密码是否相同
-            if data==self.IDlines[ REC_DATA["GAME_ID"] ][1]:
-                return "samePwd"
-            else:
-                # 更新服务器端数据库密码
-                self.accessDB(op="update", data=data)
-                return "OK"
-
-    def logout(self):
-        self.tmp_nickname = "player0"
-        self.tmp_game_id = 1
-        self.IDlines = {}
-        self.accExist = False
-        database.clear_rec_data()
-        self._updateAccount()
-
-    def _updateAccount(self):
-        # 更新登陆的账号数据，并返回True（同时更新程序中存储的和本地记录中的信息）
-        REC_DATA["NICK_NAME"] = self.tmp_nickname
-        REC_DATA["GAME_ID"] = self.tmp_game_id
-        return True
     
     # General ---------
     def addTXT(self, language, txt, font, x, y, midX=True):
@@ -1818,79 +1594,10 @@ class Settings():
         self.window.blit( surface, rect )
         return rect                   # 返回图片的位置信息以供更多操作
 
-    def __del__(self):
-        '''只要程序结束（包括主动退出和异常退出），本类就会被析构，应保证结束线程'''
-        self.closeDownload(complete=False)
-
-class Downloader(Thread):
-    def __init__(self, vers):
-        Thread.__init__(self)
-        self.progress = {"prog":"0%", "speed":"0 K/S"}
-        self.url = f'http://{SERVER_IP}/download/{vers}.zip'
-        self.fname = f'KnightThrode_{vers.split("_")[-1]}.zip'
-        self.running = True
-    
-    def run(self):
-        '''把要执行的代码写到run函数里面，线程在创建后会直接运行run函数。函数结束则线程也结束'''
-        # 联网下载
-        headers = {'Proxy-Connection':'keep-alive'}
-        r = requests.get(self.url, stream=True, headers=headers) # 指明stream属性，才能流式下载，而不是一次下载
-        length = float(r.headers['content-length'])
-        f = open(self.fname, 'wb')
-        count = 0
-        count_tmp = 0
-        time1 = time.time()     # 开始时间
-        for chunk in r.iter_content(chunk_size = 512):  # 每次下载的数据量大小
-            if self.running == False:
-                r.connection.close()
-                break
-            if chunk:
-                f.write(chunk)
-                count += len(chunk)
-                if time.time() - time1 > 2:
-                    p = count / length * 100
-                    speed = (count - count_tmp) / 1024 / 2
-                    count_tmp = count
-                    self.progress["prog"] = self.formatFloat(p) + '%'
-                    self.progress["speed"] = self.formatFloat(speed) + 'K/S'
-                    #print(self.name + ': ' + self.formatFloat(p) + '%' + ' Speed: ' + self.formatFloat(speed) + 'M/S')
-                    time1 = time.time()
-        f.close()
-        # 本地解压缩
-        if self.running:
-            self.unzip(self.fname)
-        else:
-            return None # 下载未完成，被意外中断
-        self.progress["prog"] = '100%'
-        # 操作完成后，需由主程序来结束，不能自行结束
-        while self.running:
-            time.sleep(0.2)
-            pass
-    
-    def unzip(self, file_name):  
-        """unzip zip file, file_name = abc.zip"""
-        zip_file = zipfile.ZipFile(file_name)
-        # 总文件夹应与本程序所在目录平级
-        prt = os.path.dirname(os.getcwd())
-        dir_name = prt + '/' + file_name.replace('.zip', '')
-        # 若没有同名文件夹，则生成总文件夹
-        if not os.path.isdir(dir_name):  
-            os.mkdir( dir_name )
-        # 逐项提取，解压缩
-        for names in zip_file.namelist():  
-            zip_file.extract(names, dir_name+"/")  
-        zip_file.close()
-
-    def formatFloat(self, num):
-        return '{:.2f}'.format(num)
-
-    def terminate(self):
-        self.running = False
 
 class AccountButton(Panel):
-    def __init__(self, font, mode="all"):
+    def __init__(self, font):
         Panel.__init__(self, 180, 50, font)
-        self.mode = mode    # could be "all", "no_name"
         self.portrait = pygame.image.load("image/Princess/brand.png")
         self.portrait = pygame.transform.smoothscale(self.portrait, (48,48))
         self.p_rect = self.portrait.get_rect()
@@ -1910,13 +1617,7 @@ class AccountButton(Panel):
         return False
     
     def reset(self):
-        # NICKNAME
         self.items.clear()
-        if self.mode == "all":
-            if REC_DATA["GAME_ID"] == 1:
-                self.addItem( ["|Not Logged In","|未登录"] )
-            else:
-                self.addItem( [f"|{REC_DATA['NICK_NAME']}"]*2 )
         # Check GEM
         self.gem_paint = REC_DATA['GEM']
         self.addItem( RichText( (f"| _IMG_{REC_DATA['GEM']}",f"| _IMG_{REC_DATA['GEM']}"), 
@@ -1960,68 +1661,3 @@ class AccountButton(Panel):
         #REC_DATA["GEM"] += 1
         self.reset()
         pygame.mixer.Sound("audio/coin.wav").play(0)
-
-# ================ TextBox Manager=====================
-class TextBoxManager:    
-    def __init__(self, font_tuple):
-        self.font = font_tuple  # contains all languages
-        self.text_box_dict = {}
-        self.active = ""
-    
-    def add_text_box(self, tag, size, pos, font, label, descript):
-        self.text_box_dict[tag] = TextBox(size[0], size[1], pos[0], pos[1], font=font, label=label, descript=descript)
-
-    def safe_key_down(self, event):
-        if self.active:
-            return self.text_box_dict[self.active].safe_key_down(event)
-
-    def reset(self, tags):
-        for tag in tags:
-            self.text_box_dict[tag].reset()
-            self.text_box_dict[tag].text = ""
-    
-    def set_active(self, tag):
-        for each in self.text_box_dict:
-            if each==tag:
-                self.text_box_dict[each].active = True
-                self.text_box_dict[each].alarm = False  # 已受到关注，取消红色警告
-                self.active = tag
-            else:
-                self.text_box_dict[each].active = False
-        
-    def set_alarm(self, tags):
-        for tag in tags:
-            self.text_box_dict[tag].alarm = True
-        
-    def hover_on(self, pos):
-        for tag in self.text_box_dict:
-            box = self.text_box_dict[tag]
-            if box.x<pos[0]<box.x+box.width and box.y<pos[1]<box.y+box.height:
-                return tag
-        return ""
-
-    def get_text(self, tag):
-        return self.text_box_dict[tag].text
-    
-    def paint(self, screen, tags):
-        lgg = REC_DATA["SYS_SET"]["LGG"]
-        # param tags: a list of tags that user want to draw
-        for tag in tags:
-            box = self.text_box_dict[tag]
-            # draw tag
-            txt = self.font[lgg].render(box.label[lgg], True, (255,255,255))
-            rect = txt.get_rect()
-            rect.left = box.x - rect.width - 2
-            rect.top = box.y
-            screen.blit( txt, rect )
-            if box.alarm:
-                pygame.draw.rect( screen, (255,160,160), (box.x, box.y, box.width, box.height), 3 )
-            # draw description (only when focused on)
-            if box.active:
-                txt = self.font[lgg].render(box.descript[lgg], True, (210,210,210))
-                rect = txt.get_rect()
-                rect.left = box.x + 2
-                rect.top = box.y + box.height
-                screen.blit( txt, rect )
-            # draw text_box
-            box.draw(screen)

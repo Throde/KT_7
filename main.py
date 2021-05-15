@@ -19,12 +19,11 @@ import model
 from mapElems import Coin
 from canvas import SpurtCanvas, Nature
 import plotManager
-from util import ImgButton, TextButton, RichButton, Panel, MsgManager, ImgSwitcher, TextBox, RichText
+from util import ImgButton, TextButton, RichButton, Panel, MsgManager, ImgSwitcher, RichText
 
 
 # ======================================================================
 bg_size = width, height = 1280, 720  #或1280*800(均为16:10)
-PLATFORM = "self"   # "self" or "steam". Treat differently on account.
 
 
 # ======================================================================
@@ -54,19 +53,7 @@ class God():
 
         # 初始化游戏的数据和管理对象
         self.initGameData()
-
-        if PLATFORM=="self":
-            # 检查账号登录状态
-            if REC_DATA["GAME_ID"]==1:
-                # 本地记录为1（默认初始ID），即未登陆
-                self.page = "login"         # 进入登录/注册/游客页
-            else:
-                # ID值不为1，则之前已登陆，可直接登陆
-                self.page = "index"         # 可取7个值：index, stgChoosing, collection, heroBook, settings, bazaar, login
-                self.setManager.transmitFile(op="download")   # 访问服务器，并下载.rec写入到本地
-        elif PLATFORM=="steam":
-            # steam 平台不需要程序自己管理账号
-            self.page = "index"
+        self.page = "index"
         
         self.backPosY = 56      # 返回按钮的纵坐标 
         self.setNature( self.setManager.paperList[REC_DATA["SYS_SET"]["PAPERNO"]]["e"] )    # 关卡的特殊自然装饰（雨雪等）
@@ -74,24 +61,11 @@ class God():
     
     def initGameData(self):
         # 三大用户交互管理助手
-        if PLATFORM=="self":
-            self.tbManager = plotManager.TextBoxManager(self.fntSet[1])
-            self.tbManager.add_text_box( "username", (200,24), (width//2-100,height//2-45), self.fntSet[1][1],
-                                        label=("Username: ","用户名："), descript=("No more than 12 characters.","不得多于12个字符。") )
-            self.tbManager.add_text_box( "password", (200,24), (width//2-100,height//2+15), self.fntSet[1][1],
-                                        label=("Password: ","密码："), descript=("Must be 6 to 12 characters.","须为6至12个字符。") )
-        elif PLATFORM=="steam":
-            pass
-
         self.imgSwitcher = ImgSwitcher()
         self.msgManager = MsgManager(self.fntSet[1], 1)  # stg=1
         # ===============================================================
         # =========== 宏观关卡信息、英雄书、图鉴、设置管理大类 =============
-        self.setManager = plotManager.Settings( bg_size[0]-self.embedFinal-20, bg_size[1]-180, self.fntSet[2], platf=PLATFORM )
-        if self.setManager.updateFlag==0:
-            self.msgManager.alert("update")
-        elif self.setManager.updateFlag==-1:
-            self.msgManager.alert("failure")
+        self.setManager = plotManager.Settings( bg_size[0]-self.embedFinal-20, bg_size[1]-180, self.fntSet[2] )
 
         self.stgManager = plotManager.StgManager(580, 160, self.fntSet[1])
         self.heroBook = plotManager.HeroBook(bg_size[0]-self.embedFinal, bg_size[1]-120, self.fntSet[1])
@@ -106,18 +80,7 @@ class God():
         self.choosable = self.stgManager.checkChoosable(self.curStg)
         # Account & ID part =============================================
         self.accPanel = Panel(180, 150, self.fntSet[1], title=("Personal Account","个人账号"))
-        if PLATFORM=="self":
-            self.accPanel.addItem( (f"Game ID: {REC_DATA['GAME_ID']}",f"游戏ID：{REC_DATA['GAME_ID']}") )
-            self.accPanel.addItem( (f"Total Level: {self.heroBook.total_level}",f"英雄总等级：{self.heroBook.total_level}") )
-            self.accPanel.addItem( TextButton(160, 30,
-                        {"default":("Reset Password","修改密码")}, "default", self.fntSet[1], rgba=(40,140,40,210)), tag="set_pwd"
-                    )
-            self.accPanel.addItem( TextButton(160, 30,
-                        {"default":("Log Out","退出登录")}, "default", self.fntSet[1], rgba=(140,40,40,210)), tag="log_out"
-                    )
-            self.operat = "login"
-        else:
-            self.accPanel.addItem( (f"Total Level: {self.heroBook.total_level}",f"英雄总等级：{self.heroBook.total_level}") )
+        self.accPanel.addItem( (f"Total Level: {self.heroBook.total_level}",f"英雄总等级：{self.heroBook.total_level}") )
 
         self.shiftChapter(0)
     
@@ -146,15 +109,7 @@ class God():
                     ),
         }
 
-        if PLATFORM=="self":
-            self.indexButtons["account"] = plotManager.AccountButton( self.fntSet[1], mode="all" )
-            # Login界面所需按钮
-            self.registerButton = TextButton( 160, 40, {"log":("Register","注册"), "reset":("Cancel","取消")}, 
-                "log", self.fntSet[2], rgba=(40,40,120,210) )
-            self.loginButton = TextButton(160, 40, {"log":("Log in","登录"), "reset":("Confirm","确认")}, 
-                "log", self.fntSet[2], rgba=(40,120,40,210) )
-        else:
-            self.indexButtons["account"] = plotManager.AccountButton( self.fntSet[1], mode="no_name" )
+        self.indexButtons["account"] = plotManager.AccountButton( self.fntSet[1] )
         # 主界面是否展开账户栏
         accShow = False
         
@@ -235,15 +190,6 @@ class God():
                 bazRect = self.bazaar.taskPanel.rect
                 self.addSymm(pygame.image.load("image/menu.png"), bazRect.left+10-width//2, bazRect.top+12-height//2)
 
-                # 若在下载，显示下载信息
-                if self.setManager.downloader:
-                    prog = self.setManager.downloader.progress["prog"]
-                    self.indexButtons["left3"].add_prompt( ("Download"+prog, "已下载"+prog) )
-                    if prog=='100%':
-                        self.setManager.closeDownload()
-                # 提示更新/更新完成
-                elif (self.setManager.updateFlag==0 and not self.setManager.downloader) or (self.setManager.updateFlag==2):
-                    self.indexButtons["left3"].add_prompt(("New Update","版本可更新"))
                 # 英雄可分配SP
                 for each in self.heroBook.heroList:
                     if each.SP>0:
@@ -298,33 +244,9 @@ class God():
                             #self.setManager.qList.append("shutDown#")
                             pygame.quit()
                             sys.exit()
-                        elif PLATFORM=="self":
-                            # 自平台账号相关操作
-                            if self.indexButtons["account"].hover_on(pos):
-                                if REC_DATA["GAME_ID"] == 1:  # 开始登陆
-                                    self.page = "login"
-                                else:       # 退出登陆
-                                    accShow = True
-                                    self.heroBook.update_total_level()
-                            elif accShow and acc_on:    # 退出登陆
-                                if acc_on.tag=="set_pwd":
-                                    self.registerButton.draw_text(label_key="reset")
-                                    self.loginButton.draw_text(label_key="reset")
-                                    self.operat = "reset_pwd"
-                                    self.page = "login"
-                                elif acc_on.tag=="log_out":
-                                    self.setManager.logout()
-                                    self.registerButton.draw_text(label_key="log")
-                                    self.loginButton.draw_text(label_key="log")
-                                    self.operat = "login"
-                                    self.initGameData()
-                                    self.indexButtons["account"].reset()
-                                    accShow = False
-                        else:
-                            # steam版账号相关操作
-                            if self.indexButtons["account"].hover_on(pos):
-                                accShow = True
-                                self.heroBook.update_total_level()
+                        elif self.indexButtons["account"].hover_on(pos):
+                            accShow = True
+                            self.heroBook.update_total_level()
             # =================================================
             # =================== 选关界面 =====================
             elif ( self.page == "stgChoosing" ):
@@ -700,12 +622,6 @@ class God():
                         self.addTXT( ("Change the display mode of the game.","更改游戏的显示方式。"), self.fntSet[1], mid, 0.93 )
                     elif self.setManager.currentKey == "paper":
                         self.addTXT( ("Set the wall paper of the index page.","设置首页的壁纸。"), self.fntSet[1], mid, 0.93 )
-                    elif self.setManager.currentKey == "download":
-                        self.addTXT( ("Start downloading new version.","开始下载新版本。"), self.fntSet[1], mid, 0.93 )
-                    elif self.setManager.currentKey == "cancel":
-                        self.addTXT( ("Once canceled, the downloading have to be restart next time.","取消后，再次下载需要重新开始。"), self.fntSet[1], mid, 0.93 )
-                    elif self.setManager.currentKey == "checkAgain":
-                        self.addTXT( ("Check game version again.","重新检测游戏版本。"), self.fntSet[1], mid, 0.93 )
                     elif self.setManager.currentKey and self.setManager.pNo == 1:
                         if self.setManager.currentKey == "leftKey":
                             self.addTXT( ("The key is also effective for shifting PRIOR item in any menu.","该键位也用于在菜单中切换至 前一项。"), self.fntSet[1], mid, 0.93 )
@@ -715,8 +631,6 @@ class God():
                             self.addTXT( ("The key is also effective for rolling DOWN in any menu.","该键位也用于在菜单中 向下滚动。"), self.fntSet[1], mid, 0.93 )
                         elif self.setManager.currentKey == "bagKey":
                             self.addTXT( ("The key is also effective for rolling UP in any menu.","该键位也用于在菜单中 向上滚动。"), self.fntSet[1], mid, 0.93 )
-                    elif self.setManager.downloader:
-                        self.addTXT( ("Downloading in the back end, you can play game normally.","下载在后台进行，你可以正常进行游戏。"), self.fntSet[1], mid, 0.93 )
 
                     if self.slide_status=="":
                         # handle the key events
@@ -792,16 +706,6 @@ class God():
                                     self.soundList[2].play(0)
                                     if self.setManager.chosenKey == "keyTitle":
                                         self.setManager.alterPNo()
-                                    elif self.setManager.chosenKey=="download":
-                                        self.setManager.startDownload()
-                                    elif self.setManager.chosenKey=="cancel":
-                                        self.setManager.closeDownload(complete=False)
-                                    elif self.setManager.chosenKey=="checkAgain":
-                                        self.setManager.checkVersion()
-                                        if self.setManager.updateFlag==0:
-                                            self.msgManager.alert("update")
-                                        elif self.setManager.updateFlag==-1:
-                                            self.msgManager.alert("failure")
                             elif event.type == pygame.MOUSEBUTTONDOWN:  # 鼠标滚轮滚动事件。
                                 pass
             # ================================================
@@ -842,70 +746,6 @@ class God():
                                             self.addStones(tag=self.bazaar.currentKey, pos=pos, tgt=self.bazaar.myStonePanel)
                                         elif res=="lackGem":
                                             self.msgManager.alert("lackGem")
-            # ===============================================
-            # ================== 登陆注册 ====================
-            elif ( self.page == "login" ):
-                # 绘制背景板和标题文字
-                baseRect = self.drawRect( width//2-240, height//2-140, 480, 280, (40,40,40,180) )
-                title = self.drawRect( baseRect.left+10, baseRect.top+10, baseRect.width-20, 40, (20,20,20,180) )
-                self.addTXT(("Account Center","账号中心"), self.fntSet[2], 0, 0.32)
-
-                if self.operat == "login":
-                    # 绘制文本框
-                    self.tbManager.paint(self.screen, ["username","password"])
-
-                    # button
-                    self.registerButton.paint(self.screen, width//2-100, height//2+110, pos)
-                    self.loginButton.paint(self.screen, width//2+100, height//2+110, pos)
-                    # 右上Guest Login
-                    self.imgButtons["quit"].paint( self.screen, title.right, title.top, pos, label=("Guest Player","游客试玩") )
-
-                elif self.operat == "reset_pwd":
-                    # 绘制文本框
-                    self.tbManager.paint(self.screen, ["password"])
-
-                    self.addTXT( ("You are resetting your password.","您正在修改密码。"), self.fntSet[1], 0, 0.41 )
-                    self.addTXT( ("New one should be different from the previous one.","新的密码需要与上一个不同。"), self.fntSet[1], 0, 0.44 )
-                    # button
-                    self.registerButton.paint(self.screen, width//2-100, height//2+110, pos)
-                    self.loginButton.paint(self.screen, width//2+100, height//2+110, pos)
-
-                self.addTXT( ("Basic English/Chinese characters are accepted for all boxes.",
-                        "所有文本框仅接受基本英文字符和中文字符（生僻字除外）。"), 
-                        self.fntSet[1], 0, 0.925 )
-                self.addTXT( ("If you forget the password, email [throde1998@163.com] or contact us on Wechat [KnightThrode].",
-                        "如果您忘记了密码，可发送邮件至【throde1998@163.com】，或通过微信公众号【KnightThrode】留言联系我们。"), 
-                        self.fntSet[1], 0, 0.955 )
-
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit()
-                    elif event.type == pygame.KEYDOWN:
-                        # 调用文本框键盘按下事件
-                        if self.tbManager.safe_key_down(event):
-                            # 按下回车，所有输入框失去焦点
-                            self.tbManager.set_active("")
-                    elif event.type == pygame.MOUSEBUTTONUP:
-                        # every time click the button, refocus the textboxes.
-                        self.tbManager.set_active(self.tbManager.hover_on(pos))
-                        # execute actions
-                        if self.operat == "login":
-                            if self.registerButton.hover_on(pos):
-                                self.confirmInput("register")
-                            elif self.loginButton.hover_on(pos):
-                                self.confirmInput("login")
-                            elif self.imgButtons["quit"].hover_on(pos):
-                                # 用户要求以游客身份登录
-                                self.page = "index"
-                                self.tbManager.reset( ["username","password"] )
-                                self.indexButtons["account"].reset()
-                        elif self.operat == "reset_pwd":
-                            if self.registerButton.hover_on(pos):   # 取消
-                                self.tbManager.reset( ["password"] )
-                                self.page = "index"
-                            elif self.loginButton.hover_on(pos):
-                                self.confirmInput("reset_pwd")
             
             # move flying gems
             for gem in self.gemList:
@@ -947,80 +787,6 @@ class God():
                 self.page = "index"
         
         return mid
-
-    def confirmInput(self, operation):
-        # 无账号，注册
-        if operation=="register":
-            # 检查注册格式
-            if len(self.tbManager.get_text("username"))>12 or len(self.tbManager.get_text("username"))<1:
-                self.msgManager.alert("passAlarm")
-                self.tbManager.set_alarm(["username"])
-                return
-            # 检查网络（同时下载所需数据）
-            if not self.setManager.checkAccount(self.tbManager.get_text("username"), "nickname"):
-                self.msgManager.alert("failure")
-                return
-            # 尝试检查nickname是否存在
-            if self.setManager.accExist==True:
-                self.msgManager.alert("nicknameEx")
-                self.tbManager.set_alarm(["username"])
-                return
-            # 至此，账号已无问题，检查密码格式
-            if not 6<=len(self.tbManager.get_text("password"))<=12:
-                self.msgManager.alert("passAlarm")
-                self.tbManager.set_alarm(["password"])
-                self.tbManager.reset(["password"])
-                return
-            # 检查全部通过
-            res = self.setManager.register_account(self.tbManager.get_text("password"))
-            if res != "OK":
-                self.msgManager.alert(res)
-        
-        # 已有账号，登录
-        elif operation=="login":
-            # 检查网络
-            if self.setManager.checkAccount(self.tbManager.get_text("username"), "nickname")==False:
-                self.msgManager.alert("failure")
-                return
-            # 检查账号是否存在
-            if self.setManager.accExist==False:
-                self.msgManager.alert("nicknameNotEx")
-                self.tbManager.set_alarm(["username"])
-                return
-            # 检查password是否匹配（若正确则直接登录完成）
-            if not self.setManager.checkAccount(self.tbManager.get_text("password"), "password"):
-                # 密码错误，清空并提示
-                self.msgManager.alert("falsePassword")
-                self.tbManager.set_alarm(["password"])
-                self.tbManager.reset(["password"])
-                return
-        
-        # 已登录状态，修改密码
-        elif operation=="reset_pwd":
-            # 检查网络
-            if self.setManager.checkAccount(self.tbManager.get_text("username"), "nickname")==False:
-                self.msgManager.alert("failure")
-                return
-            # 检查密码格式
-            if not 6<=len(self.tbManager.get_text("password"))<=12:
-                self.msgManager.alert("passAlarm")
-                self.tbManager.set_alarm(["password"])
-                self.tbManager.reset(["password"])
-                return
-            # 检查全部通过，发送重置密码
-            res = self.setManager.reset_account("password", self.tbManager.get_text("password"))
-            if res == "OK":
-                self.msgManager.alert(res)
-            else:
-                self.msgManager.alert(res)
-                self.tbManager.set_alarm(["password"])
-                self.tbManager.reset(["password"])
-                return
-            
-        self.page = "index"
-        self.indexButtons["account"].reset()
-        # 文件和数据下载完成后，更新程序中的数据
-        self.initGameData()
 
     def shiftChapter(self, to, coverRect=None, leftC=None, rightC=None):
         if len(self.imgSwitcher.SSList)>0:
@@ -1211,10 +977,4 @@ if __name__ == "__main__":
     finally:
         with open('./record.sav', 'wb') as f:
             pickle.dump(REC_DATA, f)
-        if PLATFORM=="self":
-            # 结束游戏时，上传记录至云端
-            if REC_DATA["GAME_ID"] != 1:
-                theGod.setManager.transmitFile(op="upload")
-                print(">> Saving Record (sysexit)...")
-                time.sleep(0.5)
         pygame.quit()

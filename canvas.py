@@ -234,7 +234,6 @@ class SpurtCanvas():
             "boneDebri": pygame.image.load("image/stg3/boneDebri.png").convert_alpha()
         }
         self.canvas = pygame.Surface(bg_size).convert_alpha()
-        self.canvas.set_colorkey( (0,0,0) )     # set black as transparent color, generally make the canvas transparent
         self.rect = self.canvas.get_rect()
         self.rect.left = 0
         self.rect.top = 0

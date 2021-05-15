@@ -525,7 +525,7 @@ class Hero(InanimSprite):
             self.jmpInfo = ( self.dustList[ self.jpCnt//2 ], self.dustRect )
         else:
             self.jmpInfo = ()
-        # Check when hero is shooting.
+        # Check when hero is shooting an arrow.
         if ( self.shootCnt > 0 ) and (self.infected<=0):
             if not ( self.shootCnt % 6 ):     # Cnt每次等于6的倍数的时候就更换一次图片
                 indx = len(self.imgLib["shootLeftList"]) - self.shootCnt//6  # 指示图片序号的临时变量。工作原理：Cnt=18的时候，imgIndx应该为0；同理，Cnt=12,imgIndx=1；Cnt=6，indx=3。
@@ -563,7 +563,7 @@ class Hero(InanimSprite):
                 self.wpPos[0] = 1 - self.weaponR["jump"][0]
             self.wpPos[1] = self.weaponR["jump"][1]
             self.wpPos[2] = self.weaponR["jump"][2]
-        # Check when hero is taking damage.
+        # Check when hero is suffering damage.
         elif self.hitFeedIndx > 0:
             if (self.status=="right"):
                 self.setImg("hittedRight")
@@ -607,7 +607,6 @@ class Hero(InanimSprite):
                 self.talk = [self.talkDic["wait"][self.lgg], 60]
         # Always renew the position of the weapon.
         self.weapon.updatePos( getPos(self, self.wpPos[0], self.wpPos[1]) )
-        # Check key pressed.
         if self.category=="hero":
             for key_name in self.respondKeyDic:
                 if key_pressed[ self.keyDic[key_name] ]:    # 若被摁下，则call该匿名函数
