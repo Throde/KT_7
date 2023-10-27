@@ -1,8 +1,9 @@
+
 """
-util.py:
-This is an integrated toolkit module for mygame, provides many useful functions and objects,
-such as UI components: buttons, panels, text boxes; and many other game-render helpers.
-It is recommended to import selected items from this module, rather than importing all.
+유틸리티.py:
+이것은 mygame을 위한 통합 툴킷 모듈로, 많은 유용한 기능과 개체를 제공합니다.
+UI 구성 요소(버튼, 패널, 텍스트 상자) 및 기타 다양한 게임 렌더링 도우미 등이 있습니다.
+모든 항목을 가져오는 것보다 이 모듈에서 선택한 항목을 가져오는 것이 좋습니다.
 """
 import pygame
 import math

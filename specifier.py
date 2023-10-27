@@ -1,8 +1,9 @@
+
 """
-specifier.py:
-Specifiers adapt/extend GameModel class to realise unique chapter features.
-Specifiers should be managed in GameModel objects.
-They also determines what kind of elements to update in different chapters.
+지정자.py:
+지정자는 GameModel 클래스를 조정/확장하여 고유한 장 기능을 실현합니다.
+지정자는 GameModel 개체에서 관리되어야 합니다.
+또한 다양한 장에서 어떤 종류의 요소를 업데이트할지 결정합니다.
 """
 from random import random, choice, randint, sample   # will be used in stg3,4,5
 import pygame

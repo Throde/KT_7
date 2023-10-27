@@ -32,21 +32,21 @@ class Hero(InanimSprite):
     arrow = 12
     fruit = 1
 
-    speed = 3         # 英雄用于计算的移动速度（可因某些因素而减慢）
-    shootNum = 1      # 用于指示每次射击射出的投掷物数量（某些英雄可能不同，默认为1）
-    arrowCnt = 12     # 指示弹药容量上限，注意和shootCnt区分开（shootCnt是动画计时）
+    speed = 3         # 계산에 사용되는 영웅의 이동 속도(특정 요인에 의해 느려질 수 있음)
+    shootNum = 1      # 발사당 발사되는 발사체 수를 나타내는 데 사용됩니다(일부 영웅의 경우 다를 수 있으며 기본값은 1입니다).
+    arrowCnt = 12     # 탄약 용량의 상한을 나타냅니다. ShootCnt와 구별된다는 점에 유의하시기 바랍니다. (shootCnt는 애니메이션 타이밍입니다)
     imgIndx = 0
     status = "left"
-    activeProps = []  # 动态存储所有生效中的道具的列表。
-    suspendedProps = [] # 因为切换塔楼而被挂起的道具列表。
+    activeProps = []  # 모든 활성 소품 목록을 동적으로 저장합니다.
+    suspendedProps = [] # 타워 전환으로 인해 중단된 소품 목록입니다.
     coins = 0
 
-    k1 = 0            # 一阶跳的标志
-    k2 = 0            # 二阶跳的标志
-    aground = True    # indicate whether hero is on the ground
+    k1 = 0            # 첫 번째 레벨 점프 표시
+    k2 = 0            # 두 번째 레벨 점프 표시
+    aground = True    ## 영웅이 지상에 있는지 여부를 나타냅니다.
     gravity = 1
     shootCnt = 0      # 射击时更换图片过程的计数
-    hitBack = 0       # 受伤击退效果，受伤时将此值设置为击退像素（仅在水平方向上）
+    hitBack = 0       # 부상 넉백 효과, 부상 시 이 값을 넉백 픽셀로 설정합니다(수평 방향으로만)
 
     wpPos = [0,0,0]   # weapon相对于hero的位置比例：pos[0]表示x坐标比例，pos[1]表示y坐标比例，pos[2]表示层级，0表示weapon在self下层，1表示weapon在self上层。
     hitFeedIndx = 0
@@ -75,7 +75,7 @@ class Hero(InanimSprite):
 
     # Img Buffer: 以下是hero的库信息部分，保存易被修改的hero的原始信息。
     # 这部分在__init__时设置完成后，不允许再被修改。当需要恢复被改变的属性时，可以从这里读取恢复。
-    oriSpd = 3           # 指示hero正常的移动速度
+    oriSpd = 3           #영웅의 일반적인 이동속도를 나타냅니다.
     oriImgLeftList = []  # hero的行走图片列表
     oriImgRightList = []
     oriImgJumpLeft = None
@@ -91,7 +91,7 @@ class Hero(InanimSprite):
         InanimSprite.__init__(self, cate)
         self.status = "left"
         self.imgIndx = 0
-        self.kNum = 13      # 单阶段跳跃的计算总次数（从离地到抵达最高点的次数，单向上升过程）
+        self.kNum = 13       # 단일 단계 점프의 총 횟수(지면을 떠난 후 가장 높은 지점에 도달할 때까지의 횟수, 일방향 상승 과정)를 계산합니다.
         self.speed = 3
         self.imgSwt = 8
         self.interactiveList = ["chest","specialWall","hostage","door","exit","merchant"]

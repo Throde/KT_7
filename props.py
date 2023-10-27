@@ -1,7 +1,7 @@
 """
 props.py:
-Define all kinds of props in game, as well as the bagpack manager for hero.
-Classes in this module is organised in the order of chapters.
+게임의 모든 종류의 소품과 영웅의 가방 관리자를 정의합니다.
+이 모듈의 수업은 장 순서로 구성됩니다.
 """
 import pygame
 # 在此模块中，load、flip和collide_mask三个函数使用很频繁，直接导入它们以方便使用

@@ -1,11 +1,11 @@
 """
 canvas.py:
-Define two major kinds of canvas: Nature (Nature_Canvas) & SpurtCanvas (Spurt_Canvas).
-Nature_Canvas presents nature effects such as rain, snow and ash;
-Spurt_Canvas is a more comprehensive canvas that mainly deals three visual effects:
-    1. paints spatters of blood, ash, smoke, flying trails, etc.;
-    2. shows halos (when hero casts superpower or gets hitted, etc.);
-    3. generates some particle-like bullets for certain monsters and heroes.
+두 가지 주요 종류의 캔버스를 정의합니다: Nature(Nature_Canvas) 및 SpurtCanvas(Spurt_Canvas).
+Nature_Canvas는 비, 눈, 재와 같은 자연 효과를 제공합니다.
+Spurt_Canvas는 주로 세 가지 시각 효과를 다루는 보다 포괄적인 캔버스입니다.
+    1. 피, 재, 연기, 날아다니는 흔적 등을 칠합니다.
+    2. 후광을 표시합니다(영웅이 초능력을 시전하거나 공격을 받을 때 등).
+    3. 특정 몬스터와 영웅에 대해 입자 같은 총알을 생성합니다.
 """
 import pygame
 from random import random, randint, choice
@@ -358,7 +358,7 @@ class SpurtCanvas():
             self.spatters.add(flake)
     
     def addPebbles(self, item, num, type="pebble"):
-        # type: "pebble", "eggDebri", "metalDebri", "boneDebri"
+        ##type: "pebble", "eggDebri", "metalDebri", "boneDebri"
         cent_x, cent_y = getPos(item,0.5,0.3)
         for i in range(num):
             # 默认向右
