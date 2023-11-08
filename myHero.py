@@ -2,6 +2,7 @@
 myHero.py:
 Define Hero class, as well as bullets, and superpower managers.
 """
+#커밋
 import pygame
 # 在myHero模块中，load、flip和collide_mask三个函数使用很频繁，这里导入这两个函数以方便使用（enemy同样）
 from pygame.image import load
