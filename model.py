@@ -4,6 +4,7 @@ Core module of the whole game: Define Model classes the manage the main game loo
 GameModel controls the image rendering, items updating, collision checks, and end-game checks.
 Adventure Mode, Endless Mode, and Tutorial Mode respectively use three different GameModel classes.
 These GameModel classes co-work tightly with Specifiers from module specifier.py.
+abcd
 """
 import sys
 import math
