@@ -10,7 +10,6 @@ model.py:
 GameModel은 이미지 렌더링, 아이템 업데이트, 충돌 확인 및 게임 종료 확인을 제어
 모험 모드, 무한 모드 및 튜토리얼 모드는 각각 다른 GameModel 클래스를 사용
 GameModel 클래스는 specifier.py 모듈의 Specifiers와 긴밀하게 협력하여 작동
-
 """
 import sys
 import math
