@@ -5,6 +5,7 @@ main.py:
 프로그램 시작 및 종료 동작을 제어합니다.
 모든 UI, 설정 등의 메뉴 페이지, 히어로북, 챕터 선택 페이지 등을 관리합니다.
 그들은 모두 신이라는 부류로 조직되어 있습니다.
+commit practice
 """
 import sys, os, traceback
 #import psutil
