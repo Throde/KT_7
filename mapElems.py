@@ -1,7 +1,7 @@
 """
-mapElems.py:
-Define class for accessories and other elements related to towers,
-Such as chests, doors, all sorts of walls, merchant, etc.
+지도를 보세요.피:
+타워와 관련된 액세서리 및 기타 요소에 대한 클래스 정의를 정의합니다.
+비용, 문, 문, 상인과 같은 모든 종류의 벽, 상인과 같은 모든 종류의 벽과 같은 것들이 있습니다.
 """
 import pygame
 from random import random, randint, choice
@@ -541,12 +541,12 @@ class Door(Porter):
     
     def conversation(self, key=0):
         if self.locked:
-            self.msgList.append( ("Please eliminate all Area Keepers.","请消灭所有区域守卫。") )
+            self.msgList.append( ("모든 몹을 해치우세요.","请消灭所有区域守卫。") )
         else:
             if self.category=="exit":
-                self.msgList.append( ("Bring hostage here to escape.","将人质引导至这里逃离塔楼。") )
+                self.msgList.append( ("인질을 구해오세요","将人质引导至这里逃离塔楼。") )
             elif self.category=="door":
-                self.msgList.append( (f"Press JUMP Key to enter.","按跳跃键进入。") )
+                self.msgList.append( (f"점프키를 눌러서 들어가세요.","按跳跃键进入。") )
 
 # ------------------------------
 class Merchant(Porter):

@@ -728,9 +728,15 @@ class Hero(InanimSprite):
             #         self.reloadSnd.play(0)
             #         spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,210,240), getPos(self, 0.5, 0.5), False )
         if self.arrow < self.arrowCnt:
-            self.arrow = self.arrowCnt
-            self.reloadSnd.play(0)
-            spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,210,240), getPos(self, 0.5, 0.5), False )
+            if self.loading==self.LDFull:
+                self.arrow = self.arrowCnt
+                self.reloadSnd.play(0)
+                spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,210,240), getPos(self, 0.5, 0.5), False )
+            # self.arrow = self.arrowCnt
+            # self.reloadSnd.play(0)
+            # spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,210,240), getPos(self, 0.5, 0.5), False )
+        
+                
     def reload2(self, delay, spurtCanvas):
         if (self.arrow==0 and self.loading==self.LDFull):
                 self.loading = 0
