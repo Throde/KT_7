@@ -133,8 +133,6 @@ class GameModel:
         self.BGRect.left = (self.bg_size[0]-self.BGRect.width) // 2   # 가운데 정렬
         self.BGRect.bottom = self.bg_size[1]                          # 초기로 하단 표
 
-
-
     def init_stone(self, stone):
         print("Using stone: ", stone)
         self.using_stone = stone
@@ -767,7 +765,9 @@ class AdventureModel(GameModel):
             self.msgManager.addMsg( msg, type="dlg" )
         self.endCnt = -1    # -1表示正常运行
 
+
     def go(self, horns, heroBook, stgManager, diffi, vol, task):
+        
         # Play bgm
         if self.stg in (1,2):
             pygame.mixer.music.load(f"audio/stg1-2BG.wav")
@@ -786,9 +786,25 @@ class AdventureModel(GameModel):
         pygame.display.flip()
         #self.heroes[0].bagpack.incItem("rustedHorn", 10)
         #self.heroes[0].bagpack.incItem("torch", 10)
+        last_key_press_time = pygame.time.get_ticks()
+        last_hp_increase_time = pygame.time.get_ticks()
 
         while self.gameOn:
-            
+            if not self.paused:
+                keys = pygame.key.get_pressed()  # 현재 눌려있는 키를 가져옴
+                if any(keys):  # 어떤 키라도 눌려있다면
+                    last_key_press_time = pygame.time.get_ticks()
+
+            # 마지막 키 입력으로부터 5000ms(5초)가 지났는지 확인
+            if pygame.time.get_ticks() - last_key_press_time > 2000:
+                # 마지막 체력 증가로부터 1000ms(1초)가 지났는지 확인
+                if pygame.time.get_ticks() - last_hp_increase_time > 1000:
+                    for hero in self.heroes:  # 모든 히어로에 대해
+                        if hero.health < hero.full:  # 체력이 풀 체력보다 작을 경우만 증가
+                            hero.health += 10  # 체력을 10증가
+                            if hero.health > hero.full:  # 체력이 풀 체력을 초과하면 풀 체력으로 조정
+                                hero.health = hero.full
+                            last_hp_increase_time = pygame.time.get_ticks()  # 체력 증가 시간 갱신
             # Repaint all elements.
             self.paint(self.heroes)
             
@@ -800,7 +816,6 @@ class AdventureModel(GameModel):
                 
                 # Check if the screen needs to be adjusted.
                 self.translate(mode="vertical")
-
                 # check hero's ㅌ & fall, msg.
                 self.avgPix = self.avgLayer = valid_hero = 0
                 for hero in self.heroes:
@@ -994,8 +1009,7 @@ class AdventureModel(GameModel):
                             else:
                                 pygame.mixer.music.play(loops=-1)
                                 self.musicOn = True
-                            self.musicButton.changeKey(self.musicOn)
-
+                            self.musicButton.changeKey(self.musicOn)           
 
             self.trueScreen.blit(self.screen, self.screenRect)
             pygame.display.flip()   # from buffer area load the pic to the screen
