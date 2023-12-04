@@ -124,8 +124,8 @@ class GameModel:
         # statistics about player's performance
         self.stat = {}
         # end screen ----------------------
-        self.restartButton = TextButton(200,60, {"default":("Retry","重试")}, "default", self.fntSet[3])
-        self.retreatButton = TextButton(200,60, {"default":("Home","主菜单")}, "default", self.fntSet[3])
+        self.restartButton = TextButton(200,60, {"default":("재시도","重试")}, "default", self.fntSet[3])
+        self.retreatButton = TextButton(200,60, {"default":("홈","主菜单")}, "default", self.fntSet[3])
 
     def init_BG(self, stg):
 
@@ -365,13 +365,13 @@ class GameModel:
         for line in self.tip:
             self.addTXT( line, 0, (30,30,30), 0, topAlign )
             topAlign += 20
-        self.addTXT(["Game paused, press [ENTER] to continue.","游戏已暂停，按【回车】键继续。"],1, (255,255,255), 0,120)
+        self.addTXT(["일시정지, [ENTER] 를 눌러서 시작하세요.","游戏已暂停，按【回车】键继续。"],1, (255,255,255), 0,120)
         # handle controllers images and click events -----------------------------------
         if self.musicOn:
-            self.musicButton.paint(self.screen, self.bg_size[0]-90, 30, pos, label=("music off","关闭音乐"))
+            self.musicButton.paint(self.screen, self.bg_size[0]-90, 30, pos, label=("음악 끄기","关闭音乐"))
         else:
-            self.musicButton.paint(self.screen, self.bg_size[0]-90, 30, pos, label=("music on","开启音乐"))
-        self.quitButton.paint(self.screen, self.bg_size[0]-150, 30, pos, label=("quit","放弃"))
+            self.musicButton.paint(self.screen, self.bg_size[0]-90, 30, pos, label=("음악 켜기","开启音乐"))
+        self.quitButton.paint(self.screen, self.bg_size[0]-150, 30, pos, label=("나가기","放弃"))
             
         return alter
     
@@ -1164,10 +1164,10 @@ class AdventureModel(GameModel):
                 if self.stg<7:
                     self.addSymm(newHero.image, 0, 20)
                     self.addTXT( self.comment, 2, (255,255,255), 0, -180)
-                self.addTXT( ("Chapter Completed!","章节完成！"), 3, (255,255,255), 0, -150)
+                self.addTXT( ("임무 완료!","章节完成！"), 3, (255,255,255), 0, -150)
             else:
                 self.addTXT( self.comment, 2, (255,255,255), 0, -180)
-                self.addTXT( ("Mission Failed.","任务失败。"), 3, (255,255,255), 0, -150)
+                self.addTXT( ("미션 실패...","任务失败。"), 3, (255,255,255), 0, -150)
             
             # Other necessary infos.
             settled = True      # 结算标志。为False表示仍在结算exp中。
@@ -1234,7 +1234,7 @@ class AdventureModel(GameModel):
                         self.tomb.append(hero)
                         self.tower.allElements["mons1"].add(hero)   # 同时加入塔楼中，以继续绘制和level & lift
                         return False
-                self.comment = ("You died.","你已阵亡。")
+                self.comment = ("죽었습니다.","你已阵亡。")
                 return True         # 执行到此处，说明游戏失败
             elif hero.category=="follower" and hero.doom:      # 要营救的对象死亡，结束游戏，但继续留在heroes中。
                 self.comment = ("The protege died.","保护对象已阵亡。")
