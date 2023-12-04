@@ -24,9 +24,9 @@ VERSION = "KT_7.4.3"
 # ==============================================================================================
 class Dialogue():
     # Words of Pre Info part ----------------
-    chp1_1 = [ ("Be careful, my hero! The whole tower's occupied by dragons, you can get supplies from scattered chests.", 
+    chp1_1 = [ ("조심하세요,탑 전체가 용들이 차지하고 있어요.                      흩어진 상자에서 보급품을 구할 수 있습니다.", 
                 "请小心，我的英雄！整座塔楼都被龙族占据，你可以从散落的宝箱中获得补给。"), 
-                ("Do kill those monsters marked as Area Keepers, so that the door to the next area can be opened.", 
+                ("다음 구역의 문을 열 수 있도록 구역 키퍼로 표시된 몬스터를              처치해야 합니다.", 
                 "务必要击杀那些标记为区域守卫的怪物，只有这样才能开启通往下一区域的大门。")
             ]
     chp1_2 = [ ("Have to face more monsters and worse environment from now on...", 
