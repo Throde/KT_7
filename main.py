@@ -730,6 +730,7 @@ class God():
                                 sys.exit()
                             elif ( event.type == KEYDOWN ):
                                 pass
+
                             elif ( event.type == pygame.MOUSEBUTTONUP ):
                                 if self.imgButtons["back"].hover_on(pos):
                                     self.soundList[2].play(0)
