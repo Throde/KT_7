@@ -29,8 +29,8 @@ example_rec_strucure = {
         "STONE": {},
 
         "KEY_SET": [
-            [97,100,115,106,107,108,105,119],
-            [98,109,110,260,261,262,264,273]
+            [97,100,115,106,107,108,105,119,114],
+            [98,109,110,260,261,262,264,273,111]
         ],
 
         "HEROES": [ # 0LVL; 1EXP; 2SP; 3HP; 4DMG; 5CNT; 6CRIT
@@ -127,6 +127,7 @@ def data2sav():
         pickle.dump(REC_DATA, fs)
 
 # 模块加载时，自动导入数据
+
 REC_DATA = load_rec_data()
 
 

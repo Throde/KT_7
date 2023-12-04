@@ -128,73 +128,21 @@ class GameModel:
         self.retreatButton = TextButton(200,60, {"default":("Home","主菜单")}, "default", self.fntSet[3])
 
     def init_BG(self, stg):
-
-        # 장면 배경
-        # init_BG 메서드, 주어진 스테이지 (stg)에 따라 배경 이미지를 초기화하고 그림 그리기에 필요한 정보를 설정합니다.
-
         self.BG = pygame.image.load(f"image/stg{stg}/towerBG.jpg").convert_alpha()
-        
-        # stg 매개변수를 통해 전달된 스테이지에 해당하는 이미지를 불러옵니다. 스테이지 번호에 따라 image/stg{stg}/towerBG.jpg 이미지를 불러옵니다. 
-        # 불러온 이미지를 알파 채널을 포함하여 불러옵니다.
-
         self.BGRect = self.BG.get_rect()
-
-        # self.BGRect라는 변수를 사용하여 배경 이미지의 사각형 영역을 설정합니다. 이 사각형 영역은 배경 이미지의 크기와 위치 정보를 포함합니다.
-
         self.BGRect.left = (self.bg_size[0]-self.BGRect.width) // 2   # 가운데 정렬
-        self.BGRect.bottom = self.bg_size[1]                          # 초기로 하단 표시
-
-        # 배경 이미지를 화면 중앙에 가운데 정렬합니다. self.BGRect.left를 사용하여 가로 방향으로 가운데 정렬하고, self.BGRect.bottom을 사용하여 세로 방향으로 화면 하단에 표시합니다.
-
-        # 이렇게 함으로써 배경 이미지가 화면의 중앙 하단에 표시됩니다.
-
-        # 이 메서드를 호출하면 해당 스테이지의 배경 이미지를 불러오고 이를 화면 중앙 하단에 표시합니다.
-  
-
-  
-
-    
+        self.BGRect.bottom = self.bg_size[1]                          # 초기로 하단 표
 
 
 
     def init_stone(self, stone):
-
-    # init_stone은 주어진 stone 매개변수에 따라 다양한 게임 요소를 초기화하고 특수한 동작을 수행하는 역할을 합니다. 
-    # 이 메서드를 호출하여 게임 내에서 특정 돌을 활성화하면, 해당 돌이 제공하는 특수 효과가 활성화되며, 이에 따른 메시지가 화면에 표시됩니다.
-    # 각 돌의 활성화와 관련된 메시지를 메시지 관리자(self.msgManager)를 사용하여 게임 화면에 출력합니다
-    # 이 메시지에는 활성화된 돌의 이름과 해당 돌이 어떤 작용을 하는지에 대한 정보가 포함됩니다.
-
         print("Using stone: ", stone)
-
-        # stone이 어떤 종류의 돌(符石)을 나타내는지 출력합니다.
-
         self.using_stone = stone
-
-        # self.using_stone 속성을 주어진 stone으로 설정합니다.
-
         if stone=="loadingStone":
             for hero in self.heroes:
                 hero.loading = hero.LDFull = RB[stone].data
-
-        # stone의 종류에 따라 다양한 동작을 수행합니다. 
-        # 예를 들어, loadingStone인 경우 모든 영웅에 대해 로딩 속도와 로딩 게이지를 설정하며, 해당 돌의 데이터에 따라 설정을 수행합니다.
-
             self.msgManager.addMsg( ("Loading Stone has been activated.","填装符石已激活。"), type="ctr", duration=120, 
                                     icon=pygame.image.load("image/runestone/loadingStone.png") )
-            
-           # elf.msgManager.addMsg(...): msgManager 객체의 addMsg 메서드를 호출하여 메시지를 추가합니다.
-
-           # ("Loading Stone has been activated.","填装符石已激活。"): 두 언어로 된 메시지를 튜플 형태로 제공합니다. 첫 번째 문자열은 영어 메시지이고, 두 번째 문자열은 중국어 메시지입니다.
-
-           # type="ctr": 메시지 유형을 지정합니다. "ctr"은 중앙에 메시지를 표시함을 나타냅니다.
-
-           # duration=120: 메시지가 화면에 표시되는 기간을 나타냅니다. 이 경우, 120 프레임 동안 메시지가 표시됩니다.
-
-           # icon=pygame.image.load("image/runestone/loadingStone.png"): 메시지와 함께 표시할 아이콘 이미지를 지정합니다. "image/runestone/loadingStone.png" 경로에서 이미지를 로드합니다.
-
-           # 이 코드는 "Loading Stone has been activated."라는 영어 메시지와 "填装符石已激活。"라는 중국어 메시지를 화면 중앙에 표시하며, 아이콘 이미지도 함께 표시합니다. 
-
-           # 이 메시지는 120 프레임 동안 화면에 표시된 후 자동으로 사라집니다. 
             
         elif stone=="sacredStone":
             for hero in self.heroes:
@@ -203,77 +151,24 @@ class GameModel:
                                             barOffset=hero.superPowerBar.barOffset, color="yellow")
             self.msgManager.addMsg( ("Sacred Stone has been activated.","神圣符石已激活。"), type="ctr", duration=120, 
                                     icon=pygame.image.load("image/runestone/sacredStone.png") )
-            
-            # 이 코드는 "sacredStone" 돌을 활성화하면 영웅의 슈퍼 파워와 슈퍼 파워 게이지가 조정되고, 관련 메시지와 아이콘 이미지가 화면에 표시됩니다.
-            
-            # for hero in self.heroes:: 모든 영웅에 대해 반복합니다. self.heroes에는 현재 게임에 참여하는 모든 영웅이 포함되어 있습니다.
-
-            # hero.superPowerFull -= round(hero.superPowerFull * RB[stone].data): 각 영웅의 superPowerFull 속성을 수정합니다.
-        
-            # RB[stone].data는 "sacredStone" 돌에 대한 데이터 값을 나타내며, 영웅의 superPowerFull에서 이 값을 차감합니다.
-
-            # hero.superPowerBar = HPBar(...) : 각 영웅의 superPowerBar를 수정합니다. 이것은 영웅의 슈퍼 파워 게이지를 나타내는 막대입니다. 
-            
-            # HPBar 클래스를 사용하여 영웅의 superPowerFull, blockVol, barOffset, 및 색상을 설정합니다.
-
-            # self.msgManager.addMsg(...) : "Sacred Stone has been activated." 라는 영어 메시지와 "神圣符石已激活。" 라는 중국어 메시지를 화면 중앙에 표시합니다. 
-            
-            # 이 메시지는 120프레임 동안 화면에 표시되며, icon으로 "image/runestone/sacredStone.png"에서 아이콘 이미지를 사용합니다.
-
         elif stone=="bloodStone":
             # action happens in Model.collectHitInfo()
             self.HPSteal = RB[stone].data
             self.msgManager.addMsg( ("Blood Stone has been activated.","鲜血符石已激活。"), type="ctr", duration=120, 
                                     icon=pygame.image.load("image/runestone/bloodStone.png") )
             
-        # 이 코드는 stone이 "bloodStone"인 경우를 다루고 있으며, 이 경우에 "鲜血符石"이 활성화됩니다. 아래는 코드의 각 부분에 대한 설명입니다:
-
-        # action happens in Model.collectHitInfo(): "bloodStone"에 대한 특별한 동작은 Model.collectHitInfo() 메서드에서 발생합니다.
-        
-        # 이 라인은 특정 작업이 다른 메서드에서 처리됨을 나타냅니다.
-
-        # self.HPSteal = RB[stone].data: self.HPSteal 변수를 설정하여 "bloodStone"의 데이터 값을 저장합니다. 이 값은 피를 흡수하는 동작과 관련이 있습니다.
-
-        # self.msgManager.addMsg(...) : "Blood Stone has been activated." 라는 영어 메시지와 "鲜血符石已激活。" 라는 중국어 메시지를 화면 중앙에 표시합니다. 
-        
-        # 이 메시지는 120프레임 동안 화면에 표시되며, icon으로 "image/runestone/bloodStone.png"에서 아이콘 이미지를 사용합니다.
-
-        # 이 코드는 "bloodStone" 돌을 활성화하면 특별한 작업은 Model.collectHitInfo() 메서드에서 처리되며, 관련 메시지와 아이콘 이미지가 화면에 표시됩니다.
-
         elif stone=="terrorStone":
             for hero in self.heroes:
                 hero.stunR = RB[stone].data
             self.msgManager.addMsg( ("Terror Stone has been activated.","恐惧符石已激活。"), type="ctr", duration=120, 
                                     icon=pygame.image.load("image/runestone/terrorStone.png") )
             
-        # 이 코드는 stone이 "terrorStone"인 경우를 다루고 있으며, 이 경우에 "恐惧符石"이 활성화됩니다. 아래는 코드의 각 부분에 대한 설명입니다:
-
-        # for hero in self.heroes:: 모든 영웅에 대해 반복합니다. self.heroes에는 현재 게임에 참여하는 모든 영웅이 포함되어 있습니다.
-
-        # hero.stunR = RB[stone].data: 각 영웅의 stunR 속성을 설정합니다. RB[stone].data는 "terrorStone" 돌에 대한 데이터 값을 나타내며, 이 값을 stunR 속성에 할당합니다.
-
-        # self.msgManager.addMsg(...) : "Terror Stone has been activated." 라는 영어 메시지와 "恐惧符石已激活。" 라는 중국어 메시지를 화면 중앙에 표시합니다.
-        
-        # 이 메시지는 120프레임 동안 화면에 표시되며, icon으로 "image/runestone/terrorStone.png"에서 아이콘 이미지를 사용합니다.
-
-        # 이 코드는 "terrorStone" 돌을 활성화하면 모든 영웅의 stunR 속성이 설정되며, 관련 메시지와 아이콘 이미지가 화면에 표시됩니다. 이로써 영웅들이 공포 돌의 효과를 경험하게 됩니다.
-
         elif stone=="hopeStone":
             for hero in self.heroes:
                 hero.heal_bonus = RB[stone].data
             self.msgManager.addMsg( ("Hope Stone has been activated.","希望符石已激活。"), type="ctr", duration=120, 
                                     icon=pygame.image.load("image/runestone/hopeStone.png") )
             
-        # 이 코드는 stone이 "hopeStone"인 경우를 다루고 있으며, 이 경우에 "希望符石"이 활성화됩니다. 아래는 코드의 각 부분에 대한 설명입니다:
-
-        # for hero in self.heroes:: 모든 영웅에 대해 반복합니다. self.heroes에는 현재 게임에 참여하는 모든 영웅이 포함되어 있습니다.
-
-        # hero.heal_bonus = RB[stone].data: 각 영웅의 heal_bonus 속성을 설정합니다. RB[stone].data는 "hopeStone" 돌에 대한 데이터 값을 나타내며, 이 값을 heal_bonus 속성에 할당합니다.
-
-        # self.msgManager.addMsg(...) : "Hope Stone has been activated." 라는 영어 메시지와 "希望符石已激活。" 라는 중국어 메시지를 화면 중앙에 표시합니다. 이 메시지는 120프레임 동안 화면에 표시되며, icon으로 "image/runestone/hopeStone.png"에서 아이콘 이미지를 사용합니다.
-
-        # 이 코드는 "hopeStone" 돌을 활성화하면 모든 영웅의 heal_bonus 속성이 설정되며, 관련 메시지와 아이콘 이미지가 화면에 표시됩니다. 이로써 영웅들은 "希望符石"의 효과를 얻게 됩니다.
-
         elif stone=="luckyStone":
             for hero in self.heroes:
                 for i in range(RB[stone].data):
@@ -285,37 +180,10 @@ class GameModel:
             self.msgManager.addMsg( ("Lucky Stone has been activated.","幸运符石已激活。"), type="ctr", duration=120, 
                                     icon=pygame.image.load("image/runestone/luckyStone.png") )
             
-        # "luckyStone" 돌을 활성화하면 영웅들의 가방에 행운에 따라 다양한 아이템이 생성되며, 관련 메시지와 아이콘 이미지가 화면에 표시됩니다.
-            
-        # 이 코드는 stone이 "luckyStone"인 경우를 다루고 있으며, 이 경우에 "幸运符石"이 활성화됩니다. 아래는 코드의 각 부분에 대한 설명입니다:
-
-        # for hero in self.heroes:: 모든 영웅에 대해 반복합니다. self.heroes에는 현재 게임에 참여하는 모든 영웅이 포함되어 있습니다.
-
-        # for i in range(RB[stone].data): "luckyStone" 돌의 데이터 값(RB[stone].data)을 기반으로 반복합니다. 이 값은 어떤 아이템을 얼마나 많이 생성할지 결정합니다.
-
-        # item = choice( ["fruit"] + PB[self.stg] ): "fruit"과 현재 스테이지 self.stg에 따른 다른 프롭 아이템 중에서 무작위로 하나를 선택합니다. 
-     
-        # 이 선택된 아이템은 행운 돌의 영웅의 가방(bagpack)에 추가됩니다.
-
-        # hero.bagpack.incItem(item, 1): 선택한 아이템을 영웅의 가방(bagpack)에 추가합니다. 1은 추가할 아이템의 수를 나타냅니다.
-
-        # startPos = [self.bg_size[0]//2+i*100, 80+i*40]: 아이템이 나타날 시작 위치를 계산합니다. 이 위치는 화면의 중앙에서 시작하고, i 값에 따라 가로로 100 픽셀씩 이동합니다.
-
-        # substance = ChestContent(...): 새로운 아이템을 나타내는 ChestContent 객체를 생성합니다. 이 객체는 아이템의 종류, 값, 수량, 시작 위치 및 가방 슬롯을 설정합니다.
-
-        # hero.eventList.append( substance ): 영웅의 이벤트 목록(eventList)에 새로 생성된 아이템(substance)을 추가합니다. 이로써 게임 내에서 아이템을 획득할 수 있게 됩니다.
-
-        # self.msgManager.addMsg(...): "Lucky Stone has been activated." 라는 영어 메시지와 "幸运符石已激活。" 라는 중국어 메시지를 화면 중앙에 표시합니다. 
-        
-        # 이 메시지는 120프레임 동안 화면에 표시되며, icon으로 "image/runestone/luckyStone.png"에서 아이콘 이미지를 사용합니다.
-
-        
         else:
             self.msgManager.addMsg( ("No runestone is used.","未使用符石。"), type="ctr", duration=120, 
                                     icon=pygame.image.load("image/runestone/voidStone.png") )
             
-        # else 절은 어떤 돌도 사용하지 않았을 때를 처리합니다. 이 경우에도 메시지 관리자를 사용하여 "No runestone is used."와 같은 메시지를 출력합니다.
-                 
     def _addVib(self, dura):
         # NOTE: dura should be an even number.
         if self.vibration>dura: # 若当前的震动时长更长，则忽视本次请求
@@ -517,6 +385,8 @@ class GameModel:
     def checkHeroKeyDown(self, hero, key):
         if ( key == hero.keyDic["shootKey"] ):    # 射击
             hero.shoot( self.tower, self.spurtCanvas )
+        elif ( key == pygame.K_r):
+            hero.reload(self.delay, self.spurtCanvas)
         elif ( key == hero.keyDic["jumpKey"] ):   # 跳跃
             # 若在下一porter处按跳跃键，且封锁已解除，则进入下一区域
             if self.tower.porter and (hero.onlayer >= self.tower.layer) and pygame.sprite.collide_mask(hero, self.tower.porter) \
@@ -931,7 +801,7 @@ class AdventureModel(GameModel):
                 # Check if the screen needs to be adjusted.
                 self.translate(mode="vertical")
 
-                # check hero's jump & fall, msg.
+                # check hero's ㅌ & fall, msg.
                 self.avgPix = self.avgLayer = valid_hero = 0
                 for hero in self.heroes:
                     # 若处于跳跃状态，则执行跳跃函数
@@ -952,7 +822,7 @@ class AdventureModel(GameModel):
                     # 这里特殊地处理follower。执行完后直接结束循环，因为follower不显示获得exp和物品。
                     if hero.category == "follower":
                         self._collectHitInfo(hero, hero.master)
-                        hero.reload( self.delay, self.spurtCanvas )
+                        # hero.reload( self.delay, self.spurtCanvas )
                         win = hero.decideAction(self.delay, self.tower, self.spurtCanvas)
                         if win:
                             self.endGame(True, inst=True)
@@ -978,7 +848,7 @@ class AdventureModel(GameModel):
                             else:
                                 self.spurtCanvas.addSpatters(3, (1,2,3), (16,18,20), (255,255,0), getPos(hero,0.5,0.4) )
                         hero.eventList.clear()
-                        hero.reload( self.delay, self.spurtCanvas )
+                        hero.reload2( self.delay, self.spurtCanvas )
                 valid_hero = max(valid_hero, 1)
                 self.avgPix = self.avgPix//valid_hero
                 self.avgLayer = self.avgLayer//valid_hero
@@ -1494,7 +1364,7 @@ class EndlessModel(GameModel):
                     else:
                         self.spurtCanvas.addSpatters(4, (2,3,4), (18,20,22), (255,255,0), getPos(self.hero,0.5,0.4) )
                 self.hero.eventList.clear()
-                self.hero.reload( self.delay, self.spurtCanvas )
+                # self.hero.reload( self.delay, self.spurtCanvas )
 
                 # 检查各关自然阻碍和特殊机制。
                 if self.stg==1:
@@ -2055,7 +1925,7 @@ class TutorialModel(GameModel):
                         else:
                             self.spurtCanvas.addSpatters(3, (1,2,3), (16,18,20), (255,255,0), getPos(hero,0.5,0.4) )
                     hero.eventList.clear()
-                    hero.reload( self.delay, self.spurtCanvas )
+                    # hero.reload( self.delay, self.spurtCanvas )
                 valid_hero = max(valid_hero, 1)
                 self.avgPix = self.avgPix//valid_hero
                 self.avgLayer = self.avgLayer//valid_hero

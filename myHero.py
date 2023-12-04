@@ -98,7 +98,7 @@ class Hero(InanimSprite):
         self.imgSwt = 8
         self.interactiveList = ["chest","specialWall","hostage","door","exit","merchant"]
 
-        self.superPowerFull = 3200  # 超级技能充满所需值
+        self.superPowerFull = 1600  # 超级技能充满所需值 // 파워 충전 게이지 수정
         if VHero.no == 0:
             self.name = "knight"
             self.push = 7
@@ -716,10 +716,25 @@ class Hero(InanimSprite):
         
     def reload(self, delay, spurtCanvas):
         # Check loading listener: When ammos run out and loading is full
-        if self.arrow==0 and self.loading==self.LDFull:
-            self.loading = 0
+            # if (self.arrow==0 and self.loading==self.LDFull):
+            #     self.loading = 0
+            #     self.reloadSnd.play(0)
+            # # when loading is not full: Reloading...
+            # elif self.loading<self.LDFull:
+            #     self.loading += 1
+            #     if self.loading==self.LDFull:
+            #         self.arrow = self.arrowCnt
+            #         self.reloadSnd.play(0)
+            #         spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,210,240), getPos(self, 0.5, 0.5), False )
+        if self.arrow < self.arrowCnt:
+            self.arrow = self.arrowCnt
             self.reloadSnd.play(0)
-        # when loading is not full: Reloading...
+            spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,210,240), getPos(self, 0.5, 0.5), False )
+    def reload2(self, delay, spurtCanvas):
+        if (self.arrow==0 and self.loading==self.LDFull):
+                self.loading = 0
+                self.reloadSnd.play(0)
+            # when loading is not full: Reloading...
         elif self.loading<self.LDFull:
             self.loading += 1
             if self.loading==self.LDFull:

@@ -1377,9 +1377,12 @@ class Settings():
         self.curSub = 0
         # ===============================================================
         # key dictionary(字典value为按键在pygame中的标识码)
-        kd1, kd2 = REC_DATA["KEY_SET"]
-        self.keyDic1 = dict( leftKey=kd1[0], rightKey=kd1[1], downKey=kd1[2], shootKey=kd1[3], jumpKey=kd1[4], superKey=kd1[5], itemKey=kd1[6], bagKey=kd1[7] )
-        self.keyDic2 = dict( leftKey=kd2[0], rightKey=kd2[1], downKey=kd2[2], shootKey=kd2[3], jumpKey=kd2[4], superKey=kd2[5], itemKey=kd2[6], bagKey=kd2[7] )
+        kd1, kd2 = REC_DATA["KEY_SET"] = [
+    [97,100,115,106,107,108,105,119,114],
+    [98,109,110,260,261,262,264,273,111]
+]
+        self.keyDic1 = dict( leftKey=kd1[0], rightKey=kd1[1], downKey=kd1[2], shootKey=kd1[3], jumpKey=kd1[4], superKey=kd1[5], itemKey=kd1[6], bagKey=kd1[7] , reloadKey =kd1[8] )
+        self.keyDic2 = dict( leftKey=kd2[0], rightKey=kd2[1], downKey=kd2[2], shootKey=kd2[3], jumpKey=kd2[4], superKey=kd2[5], itemKey=kd2[6], bagKey=kd2[7] , reloadKey =kd1[8] )
         self.renewKeyNm()
         self.chosenKey = self.currentKey = ""
         self.chosenRect = self.currentRect = None
@@ -1514,7 +1517,8 @@ class Settings():
                 "key5": {"tag": "jumpKey", "name": ("Jump","上跳"), "rect": None}, 
                 "key6": {"tag": "superKey", "name": ("Super Power","超级技能"), "rect": None}, 
                 "key7": {"tag": "itemKey", "name": ("Use Props","使用道具"), "rect": None}, 
-                "key8": {"tag": "bagKey", "name": ("Change Props","切换道具"), "rect": None}, 
+                "key8": {"tag": "bagKey", "name": ("Change Props","切换道具"), "rect": None},
+                "key9": {"tag": "reloadKey", "name": ("reload","切换道具"), "rect": None}, 
             }
             for key_n in k_dict:
                 k_dict[key_n]["rect"] = self.addTXT( language, k_dict[key_n]["name"], fntSet[2], -x, y )
@@ -1564,7 +1568,8 @@ class Settings():
         self.keyNm = { "key1":pygame.key.name(ref["leftKey"]).upper(), "key2":pygame.key.name(ref["rightKey"]).upper(), 
             "key3":pygame.key.name(ref["downKey"]).upper(), "key4":pygame.key.name(ref["shootKey"]).upper(), 
             "key5":pygame.key.name(ref["jumpKey"]).upper(), "key6":pygame.key.name(ref["superKey"]).upper(), 
-            "key7":pygame.key.name(ref["itemKey"]).upper(), "key8":pygame.key.name(ref["bagKey"]).upper() }
+            "key7":pygame.key.name(ref["itemKey"]).upper(), "key8":pygame.key.name(ref["bagKey"]).upper(),
+            "key9":pygame.key.name(ref["reloadKey"]).upper() }
     
     def alterPNo(self):
         if self.pNo==1:
