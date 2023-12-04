@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 플롯매니저.py:
 이 모듈은 다음과 같은 모든 메뉴 페이지의 수업 관리를 담당하는 텍스트 및 멀티미디어 자원 관리 모듈입니다.
@@ -311,10 +312,10 @@ class StgManager():
         self.diffi = REC_DATA["SYS_SET"]["DIFFI"]
         self.P2in = False            # 初始默认为single，即P2不参战
         # Chapter Settings Panel -----------
-        self.panel = Panel(180, 150, font, title=("Chapter Settings","章节设置"))
-        self.panel.addItem( ("- Difficulty -","- 游戏难度 -") )
+        self.panel = Panel(180, 150, font, title=("게임 설정","章节设置"))
+        self.panel.addItem( ("- 난이도 -","- 游戏难度 -") )
         self.panel.addItem( TextButton(160,30,
-            {0:("Easy","简单"), 1:("Normal","标准"), 2:("Heroic","英雄")}, self.diffi, font), tag="diffi"    
+            {0:("쉬움","简单"), 1:("중간","标准"), 2:("어려움","英雄")}, self.diffi, font), tag="diffi"    
         )
         self.panel.addItem( ("- P2 Join -","- 玩家2参战 -") )
         self.panel.addItem( TextButton(160,30,
@@ -835,7 +836,7 @@ class HeroBook():
         # statistics
         self.update_total_level()
         # panel ======================================
-        self.panel = Panel(180, 120, panel_font, title=("Chosen Heroes","出战英雄"))
+        self.panel = Panel(180, 120, panel_font, title=("히어로 선택","出战英雄"))
         h1 = self.heroList[self.curHero[0]]
         self.panel.addItem( 
             RichText( (f"P1 - _IMG_ {h1.name[0]} ",f"P1 - _IMG_ {h1.name[1]}"), 
@@ -1369,7 +1370,7 @@ class Settings():
     versInfo = []
 
     paperList = []     # 壁纸原画信息列表
-    subject = { 0:("System","系统"), 1:("Joystick","操作") }
+    subject = { 0:("설정","系统"), 1:("조작키","操作") }
 
     def __init__(self, width, height, font):
         self.instruction = {"leftOpt":pygame.image.load("image/Next.png"), 
@@ -1433,18 +1434,18 @@ class Settings():
             self.addTXT( language, ("System Settings","系统设置"), fntSet[2], 0, y )
             y += self.yp
             # 语言设置行
-            lggRect = self.addTXT( language, ("Language","语言"), fntSet[2], -x, y )
+            lggRect = self.addTXT( language, ("언어","语言"), fntSet[2], -x, y )
             if language == 0:
-                self.addTXT( language, ("English","英语"), fntSet[2], x, y )
+                self.addTXT( language, ("영어","英语"), fntSet[2], x, y )
             elif language == 1:
-                self.addTXT( language, ("Chinese","中文"), fntSet[2], x, y )
+                self.addTXT( language, ("중국어","中文"), fntSet[2], x, y )
             if self.chosenKey=="language":  # 若被选中，将之高亮
                 self.drawFrame( lggRect )
                 self.addSymm( self.instruction["leftOpt"], x-90, lggRect.top+lggRect.height//2 )
                 self.addSymm( self.instruction["rightOpt"], x+90, lggRect.top+lggRect.height//2 )
             y += self.yp
             # 音量设置行
-            volRect = self.addTXT( language, ("BGM Volume","背景音乐音量"), fntSet[2], -x, y )
+            volRect = self.addTXT( language, ("음악 볼륨","背景音乐音量"), fntSet[2], -x, y )
             self.addTXT( language, ("%d"%REC_DATA["SYS_SET"]["VOL"],"%d"%REC_DATA["SYS_SET"]["VOL"]), fntSet[2], x, y )
             if self.chosenKey=="volume":  # 若被选中，将之高亮
                 self.drawFrame( volRect )
@@ -1452,11 +1453,11 @@ class Settings():
                 self.addSymm( self.instruction["rightOpt"], x+90, volRect.top+volRect.height//2 )
             y += self.yp
             # 显示方式设置行
-            dspRect = self.addTXT( language, ("Display","显示方式"), fntSet[2], -x, y )
+            dspRect = self.addTXT( language, ("화면","显示方式"), fntSet[2], -x, y )
             if REC_DATA["SYS_SET"]["DISPLAY"]==0:
                 self.addTXT( language, ("WINDOW","窗口"), fntSet[2], x, y )
             elif REC_DATA["SYS_SET"]["DISPLAY"]==1:
-                self.addTXT( language, ("FULLSCREEN","全屏"), fntSet[2], x, y )
+                self.addTXT( language, ("전체화면","全屏"), fntSet[2], x, y )
             if self.chosenKey=="display":  # 若被选中，将之高亮
                 self.drawFrame( dspRect )
                 self.addSymm( self.instruction["leftOpt"], x-90, dspRect.top+dspRect.height//2 )

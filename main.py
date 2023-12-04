@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Knight_Throde
 """
 main.py:
@@ -39,10 +40,10 @@ class God():
         pygame.display.set_caption(f"Knight Throde {plotManager.VERSION.split('_')[-1]}")
 
         '''====font set========'''
-        self.fntSet = [ ( pygame.font.Font("font/ebangkok.ttf", 14), pygame.font.Font("font/cHeiti.ttf", 14) ), 
-            ( pygame.font.Font("font/ebangkok.ttf", 18), pygame.font.Font("font/cHeiti.ttf", 18) ), 
-            ( pygame.font.Font("font/ebangkok.ttf", 24), pygame.font.Font("font/cHeiti.ttf", 24) ), 
-            ( pygame.font.Font("font/ebangkok.ttf", 32), pygame.font.Font("font/cHeiti.ttf", 32) ) ]
+        self.fntSet = [ ( pygame.font.Font("font/UnDinaru.ttf", 14), pygame.font.Font("font/UnDinaru.ttf", 14) ), 
+            ( pygame.font.Font("font/UnDinaru.ttf", 18), pygame.font.Font("font/UnDinaru.ttf", 18) ), 
+            ( pygame.font.Font("font/UnDinaru.ttf", 24), pygame.font.Font("font/UnDinaru.ttf", 24) ), 
+            ( pygame.font.Font("font/UnDinaru.ttf", 32), pygame.font.Font("font/UnDinaru.ttf", 32) ) ]
         # music and sound -----------------------------------------------
         self.soundList = [ pygame.mixer.Sound("audio/victoryHorn.wav"), pygame.mixer.Sound("audio/gameOver.wav"), pygame.mixer.Sound("audio/click.wav") ]
         # 返回按钮 & 界面选项等控件 --------------------------------------
@@ -93,20 +94,20 @@ class God():
         self.indexButtons = {
             # -- 主游戏按钮.
             "advt": RichButton(150, 150, pygame.image.load("image/menu5.png").convert_alpha(), 
-                        {1:("Chapters","选择章节")}, 1, self.fntSet[2]
+                        {1:("단계","选择章节")}, 1, self.fntSet[2]
                     ),
             # -- 左侧菜单选项
             "left1": RichButton(160, 70, pygame.image.load("image/menu1.png").convert_alpha(), 
-                        {1:("Album","图鉴")}, 1, self.fntSet[1], align='horizontal'
+                        {1:("도감","图鉴")}, 1, self.fntSet[1], align='horizontal'
                     ),
             "left2": RichButton(160, 70, pygame.image.load("image/menu2.png").convert_alpha(), 
-                        {1:("Heroes","英雄书")}, 1, self.fntSet[1], align='horizontal'
+                        {1:("히어로","英雄书")}, 1, self.fntSet[1], align='horizontal'
                     ),
             "left3": RichButton(160, 70, pygame.image.load("image/menu3.png").convert_alpha(), 
-                        {1:("Settings","综合设置")}, 1, self.fntSet[1], align='horizontal'
+                        {1:("설정","综合设置")}, 1, self.fntSet[1], align='horizontal'
                     ),
             "left4": RichButton(160, 70, pygame.image.load("image/menu4.png").convert_alpha(), 
-                        {1:("Bazaar","市集")}, 1, self.fntSet[1], align='horizontal'
+                        {1:("상점","市集")}, 1, self.fntSet[1], align='horizontal'
                     ),
         }
 
@@ -253,7 +254,7 @@ class God():
             elif ( self.page == "stgChoosing" ):
 
                 if REC_DATA["SYS_SET"]["MOD_STOP"]==0:
-                    mid = self.paint_right_panel(pos, self.curStg, title=("Adventure Mode","冒险模式"))
+                    mid = self.paint_right_panel(pos, self.curStg, title=("모험 모드","冒险模式"))
                 elif REC_DATA["SYS_SET"]["MOD_STOP"]==1:
                     mid = self.paint_right_panel(pos, 0, title=("Endless Mode","无尽模式"))
                 
@@ -544,13 +545,13 @@ class God():
                     attrPair = self.heroBook.renderWindow( self.fntSet[2], self.fntSet[1], innerPos )
 
                     if attrPair[1] and attrPair[0] != "RNG":
-                        if attrPair[0]=="HP":
+                        if attrPair[0]=="체력":
                             self.addTXT( ("The max hit point of the hero.","英雄的体力值上限。"), self.fntSet[1], mid, 0.925 )
-                        elif attrPair[0]=="DMG":
+                        elif attrPair[0]=="데미지":
                             self.addTXT( ("Basic damage of ammo per hit.","每发弹药的每次命中基础伤害。"), self.fntSet[1], mid, 0.925 )
-                        elif attrPair[0]=="CNT":
+                        elif attrPair[0]=="화살 수":
                             self.addTXT( ("Max volume of ammo per loading.","每次填装后的弹药数量上限。"), self.fntSet[1], mid, 0.925 )
-                        elif attrPair[0]=="CRIT":
+                        elif attrPair[0]=="치명타":
                             self.addTXT( (r"Chance of making critical damage (150% basic damage + stun).","造成暴击伤害的概率（150%倍基础伤害+眩晕）。"), self.fntSet[1], mid, 0.925 )
                         self.addTXT( ("Allocate one SP to strengthen the item. (Level up the hero to gain SP)","消耗一个技能点以强化该属性。（技能点通过升级英雄获得）"), self.fntSet[1], mid, 0.955 )
                                         

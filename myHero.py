@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 myHero.py:
 Define Hero class, as well as bullets, and superpower managers.
@@ -103,9 +104,9 @@ class Hero(InanimSprite):
             self.name = "knight"
             self.push = 7
             self.weight = 2
-            self.talkDic = { "ammoOut":("Arrow's running out.","弓箭用完了。"), "shoot":("Watch out!","看箭！"),
-                "fullCharge":("Ready to wreck!","准备毁灭！"), "underCharge":("Still need to charge...","还需要充能……"), 
-                "hitted":("Ouch!","呃啊！"), "wait":("Next step...","下一步应该……"), "follower":("","") }
+            self.talkDic = { "ammoOut":("화살이 다 떨어졌어요!.","弓箭用完了。"), "shoot":("조심해!","看箭！"),
+                "fullCharge":("충전 완료!","准备毁灭！"), "underCharge":("충전이 부족해요...","还需要充能……"), 
+                "hitted":("아야!","呃啊！"), "wait":("기다리세요...","下一步应该……"), "follower":("","") }
             # 只保留left方向下的位置数据，根据hero的状态进行区分。right方向下，保持第二项不变，第一项用1去减即可。第三项只可取0或1。
             self.oriWeaponR = {"normal":[ (0.68,0.77,1), (0.63,0.75,1), (0.58,0.73,1), (0.63,0.75,1), (0.58,0.73,1) ], 
                 "shoot":[ (0.1,0.62,1), (0.28,0.74,1), (0.5,0.8,1) ], "jump":(0.68,0.68,1), "superPower":(0.53,0.5,1)}
@@ -744,13 +745,13 @@ class Hero(InanimSprite):
 
     def useItem(self, spurtCanvas):
         if self.bagpack.bagPt<0:
-            return ("You don't have items in bagpack!","你的背包中没有道具！")
+            return ("가방에 아무 것도 없어요!","你的背包中没有道具！")
         curName = self.bagpack.bagBuf[self.bagpack.bagPt]
         if curName == "fruit":
             if self.infected>=0:
-                return ("Can't eat fruit when infected.","感染时无法使用。")
+                return ("감염 되었을 땐, 과일을 먹을 수 없어요!.","感染时无法使用。")
             elif self.health == self.full:
-                return ("Your HP is full at the time.","当前你的体力值已满。")
+                return ("이미 체력이 풀피에요.","当前你的体力值已满。")
             else:
                 self.fruitSnd.play(0)
                 self.bagpack.decItem("fruit")
