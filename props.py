@@ -370,7 +370,6 @@ class Copter(Prop):
         self.user.fall = self.fallFly
 
     def work(self):
-        self.duration -= 1
         if self.duration<=100:
             self.user.spurtCanvas.addSmoke(1,(3,4,5),5,(10,10,10,150),getPos(self,0.5,random()),4)
             if self.duration <= 0:

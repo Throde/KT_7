@@ -23,7 +23,7 @@ from mapElems import ChestContent, Statue, Pool
 import myHero
 from canvas import SpurtCanvas, Nature
 from plotManager import Dialogue
-
+from props import Copter
 from specifier import * # specifier 모듈을 가져와서 각 장(chapter)에 따라 이 모듈의 기본 "게임 관리자"를 맞춤화합니다.
 
 from database import GRAVITY, MB, CB, RB, PB
@@ -427,6 +427,7 @@ class GameModel:
             hero.bagpack.shiftItem()
             self.effecter.addSwitch(hero.slot.bagShad[0], hero.slot.bagShad[1], 1, 50, 0)
 
+    
     def checkShopKeyDown(self, hero, key):
         if ( key == self.hero.keyDic["leftKey"] ):
             self.buyNum = max(self.buyNum-1, -1)
@@ -795,7 +796,7 @@ class AdventureModel(GameModel):
                 if any(keys):  # 어떤 키라도 눌려있다면
                     last_key_press_time = pygame.time.get_ticks()
 
-            # 마지막 키 입력으로부터 5000ms(5초)가 지났는지 확인
+            # 마지막 키 입력으로부터 5가 지났는지 확인
             if pygame.time.get_ticks() - last_key_press_time > 2000:
                 # 마지막 체력 증가로부터 1000ms(1초)가 지났는지 확인
                 if pygame.time.get_ticks() - last_hp_increase_time > 1000:
@@ -1225,12 +1226,12 @@ class EndlessModel(GameModel):
     wave = 0
     cntDown = 0
     cycle = 5   # waves per chapter
-
+    
     def __init__(self, stg, keyDic, screen, language, fntSet, monsDic, VHero, stone="VOID"):
         GameModel.__init__(self, 0, screen, language, fntSet, monsDic)
         self.init_BG(2)
         Statue.spurtCanvas = self.spurtCanvas
-
+        
         # Other Settings
         self.keyDic = keyDic
         self.alertSnd = pygame.mixer.Sound("audio/alert.wav")
@@ -1255,7 +1256,7 @@ class EndlessModel(GameModel):
         self.hero.slot = HeroSlot("p1", self.hero, VHero, self.bg_size, self.coinIcon, extBar="LDBar")
         self.hero.renewCheckList(self.tower.groupList["0"])
         self.heroes = [self.hero]
-
+        
         self.tower.merchant.initWindow(self.hero.keyDic)
         self.fitTower()
         # Add Pool
@@ -1286,20 +1287,19 @@ class EndlessModel(GameModel):
         pygame.mixer.music.load("audio/stg7BG.wav")    # Play bgm
         pygame.mixer.music.set_volume(vol/100)
         pygame.mixer.music.play(loops=-1)
-
+        
         self.translation = [0,0]
         self.tip = choice( self.plotManager.tips )
         self.screen.fill( (0, 0, 0) )
         
         self._initSideBoard()   # Paint two sideBoards
+        self.hero.bagpack.incItem("copter", 1)
         pygame.display.flip()
         # make a queue that stores coming monsters. format: [ballObj, monsObj]
         self.monsQue = []
         # Give one defense tower.
         #self.hero.bagpack.incItem("defenseTower", 1)
-
         while self.gameOn:
-            
             # repaint all elements
             self.paint(self.heroes)
 
@@ -1888,8 +1888,8 @@ class TutorialModel(GameModel):
         
         self._initSideBoard()   # Paint two sideBoards
         pygame.display.flip()
-        #self.heroes[0].bagpack.incItem("rustedHorn", 10)
-        #self.heroes[0].bagpack.incItem("torch", 10)
+        self.heroes[0].bagpack.incItem("rustedHorn", 10)
+        self.heroes[0].bagpack.incItem("torch", 10)
 
         while self.gameOn:
             
@@ -1913,7 +1913,7 @@ class TutorialModel(GameModel):
                     # 否则，执行掉落函数
                     else:
                         fallChecks = self.tower.groupList[str(hero.onlayer-1)]
-                        hero.fall(self.tower.getTop(hero.onlayer-1), fallChecks, self.tower.heightList, GRAVITY)
+                        hero.fallFly(self.tower.getTop(hero.onlayer-1), fallChecks, self.tower.heightList, GRAVITY)
                     # decide the image of Hero
                     # key.get_pressed(): get the list including the boolean status of all keys
                     vib = hero.checkImg( self.delay, self.tower, self.heroes, pygame.key.get_pressed(), self.spurtCanvas )
