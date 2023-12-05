@@ -801,7 +801,7 @@ class AdventureModel(GameModel):
                 if pygame.time.get_ticks() - last_hp_increase_time > 1000:
                     for hero in self.heroes:  # 모든 히어로에 대해
                         if hero.health < hero.full:  # 체력이 풀 체력보다 작을 경우만 증가
-                            hero.health += 10  # 체력을 10증가
+                            hero.health += 18  # 체력을 10증가
                             if hero.health > hero.full:  # 체력이 풀 체력을 초과하면 풀 체력으로 조정
                                 hero.health = hero.full
                             last_hp_increase_time = pygame.time.get_ticks()  # 체력 증가 시간 갱신
