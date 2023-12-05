@@ -350,7 +350,7 @@ class StgManager():
     
     def checkChoosable(self, stg):
         # Endless Mode: final chapter should have been passed
-        if stg==0 and REC_DATA["CHAPTER_REC"][-1]>0:
+        if stg==0 and REC_DATA["CHAPTER_REC"][0]>0:
             return True
         # Adventure Mode: as long as the chapter has been unlocked
         elif REC_DATA["CHAPTER_REC"][stg-1]>=0:
