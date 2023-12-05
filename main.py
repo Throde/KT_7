@@ -256,7 +256,7 @@ class God():
                 if REC_DATA["SYS_SET"]["MOD_STOP"]==0:
                     mid = self.paint_right_panel(pos, self.curStg, title=("모험 모드","冒险模式"))
                 elif REC_DATA["SYS_SET"]["MOD_STOP"]==1:
-                    mid = self.paint_right_panel(pos, 0, title=("Endless Mode","无尽模式"))
+                    mid = self.paint_right_panel(pos, 0, title=("무한, 비행 모드","无尽模式"))
                 
                 if self.slide_status=="" or self.slide_status=="in":
                     
@@ -892,7 +892,7 @@ class God():
         if REC_DATA["SYS_SET"]["MOD_STOP"]==0:
             self.addTXT( (f"CHAPTER {self.curStg}",f"第{self.curStg}章"), self.fntSet[2], mid, 0.555 )
         elif REC_DATA["SYS_SET"]["MOD_STOP"]==1:
-            self.addTXT( (f"EXTRA CHAPTER",f"特殊章节"), self.fntSet[2], mid, 0.555 )
+            self.addTXT( (f"끊임 없는 적을 죽여라",f"特殊章节"), self.fntSet[2], mid, 0.555 )
         # 关卡可选，则给出关卡名；否则加上灰色幕布和锁🔒
         if self.choosable:
             self.addTXT( chpName, self.fntSet[3], mid, 0.6 )

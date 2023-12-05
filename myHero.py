@@ -337,7 +337,56 @@ class Hero(InanimSprite):
         if self.category=="hero":
             VHero.voice.play(0)
             self.superPowerVoice = pygame.mixer.Sound("audio/"+self.name+"/superPowerVoice.wav")
+        # 기존 속성들...
+        self.copterActive = False  # 코프터 아이템 활성화 여부
+        self.copterDuration = 0  # 코프터 아이템 지속 시간
+#############################################################################
+    def fallFly(self, keyLine, newLine, heightList, GRAVITY):
+        self.rect.bottom += self.gravity  # 尝试将自身纵坐标减去重力值
+        # 获得所有碰撞了的物体对象，并针对每一个碰撞了的item执行相应的响应动作。这里不会触发特殊砖块的效果。
+        for item in pygame.sprite.spritecollide(self, self.checkList, False, collide_mask):
+            if item.category in self.interactiveList:
+                item.interact(self)
+        # 飞行状态不重复下落，逐步减缓重力。
+        if self.gravity>0:
+            self.gravity -= 1
+        # 如果和参数中的物体重合，则回退1高度
+        while getCld(self, self.checkList, ["baseWall","specialWall","sideWall","blockStone","house"]):
+            self.aground = True
+            self.rect.bottom -= 1    # 循环-1，直到不再和任何物体重合为止
+        self.renewCheckList(newLine) # 更新self.checkList（跳跃函数中不必更新，只有这里需要更新）
+        # 判断是否要向下调整层数.
+        if ( self.rect.top >= keyLine ):
+            self.shiftLayer(-2, heightList)
+#############################################################################
+    def activateCopter(self):
+        self.copterActive = True
+        self.copterDuration = 500  # 코프터 아이템의 지속 시간 설정
 
+    def deactivateCopter(self):
+        self.copterActive = False
+        self.copterDuration = 0
+
+    def updateCopter(self):
+        if self.copterActive:
+            self.copterDuration -= 1
+            if self.copterDuration <= 0:
+                self.deactivateCopter()
+#############################################################################
+    def jumpFly(self, keyLine):
+        self.aground = False
+        while ( getCld(self, self.checkList, ["sideWall","baseWall","blockStone"]) ):  # 如果和参数中的物体重合，则回退1高度
+            self.rect.bottom += 1        # 循环+1，直到不再和任何物体重合为止，跳出循环
+        if ( self.rect.bottom <= keyLine ):
+            self.shiftLayer(2, None)
+#############################################################################
+    def moveY(self, delay, to):
+        self.lift(to)
+        if to<0:
+            self.k1 = 1   # 为了能够执行jump函数，检查向上调整层数
+        elif to>0:
+            self.k1 = 0   # 为了能够执行fall函数，检查向下调整层数
+#############################################################################
     # 用于重置本元素的位置至所给塔楼的初始位置
     def resetPosition(self, tower, tag="p1", layer="-1", side="left"):
         if side=="left":
@@ -748,7 +797,15 @@ class Hero(InanimSprite):
                 self.arrow = self.arrowCnt
                 self.reloadSnd.play(0)
                 spurtCanvas.addSpatters( 12, [3, 4, 5], [16,20,24], (100,100,210,240), getPos(self, 0.5, 0.5), False )
-
+    def useItem2(self, spurtCanvas):
+        
+        curName = self.bagpack.bagBuf[self.bagpack.bagPt] = ["copter"]
+        if curName == "copter":
+            if self.oneInEffect("copter"):
+                return ("You have a copter working.","你已经装有一个竹蜻蜓。")
+            else:
+                self.bagpack.decItem("copter")
+                self.activeProps.append( Copter(self) )
     def useItem(self, spurtCanvas):
         if self.bagpack.bagPt<0:
             return ("가방에 아무 것도 없어요!","你的背包中没有道具！")
@@ -850,7 +907,6 @@ class Hero(InanimSprite):
             if self.oneInEffect("copter"):
                 return ("You have a copter working.","你已经装有一个竹蜻蜓。")
             else:
-                self.bagpack.decItem("copter")
                 self.activeProps.append( Copter(self) )
         elif curName == "pesticide":
             if self.oneInEffect("pesticide"):
