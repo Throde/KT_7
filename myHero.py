@@ -32,7 +32,7 @@ class Hero(InanimSprite):
     gender = "Male"
     health = 960
     full = 960
-    arrow = 12
+    arrow = 15
     fruit = 1
 
     speed = 3         # 계산에 사용되는 영웅의 이동 속도(특정 요인에 의해 느려질 수 있음)
@@ -186,7 +186,7 @@ class Hero(InanimSprite):
                 "shoot":[ (0.1,0.64,1), (0.12,0.63,1), (0.12,0.63,1) ], "jump":(0.16,0.74,0), "superPower":(0.53,0.5,1)}
             self.gender = "Female"
         self.rDamage = VHero.dmg
-        self.arrowCnt = VHero.cnt
+        self.arrowCnt = 15
         self.critR = round(VHero.crit/100, 2)   # 转化为0-1之间的数
         self.stunR = 0
         self.oriSpd = self.speed
@@ -1254,7 +1254,7 @@ class Ammo(InanimSprite):  # 各种ammo的基本原型
         # 是否暴击
         self.crit = True if (random()<hero.critR) else False
         if self.crit:
-            self.damage = round(self.damage*1.5)
+            self.damage = round(self.damage*2.5)
             self.push = round(self.push*1.5)
             self.bldNum = round(self.bldNum*1.5)
         # 是否眩晕

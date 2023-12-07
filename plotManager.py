@@ -750,7 +750,7 @@ class HeroBook():
         self.heroList = []
         # name, acc,   hp, dmg, rDmg,   desc, note
         self.heroList.append( VHero( 
-            0, ("Knight","骑士"), self.accList[0], (960,50), (140,10), (12,1), ("Normal","中"), 3200, 
+            0, ("Knight","骑士"), self.accList[0], (960,50), (200,10), (12,1), ("Normal","中"), 3200, 
             (("He's a speechless man who hides all","沉默寡言的骑士，把他一生的话"), 
             ("his words in the buried love towards Princess.","都藏在那颗爱公主的心当中。")), 
             ("Basic hero.","基本英雄。"), ("Justice Shower","正义洗礼"),
